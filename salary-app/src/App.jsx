@@ -26,8 +26,7 @@ const App = () => {
     { code: '00', value: 0 },
   ], []);
 
-  // 定義初始預設值 (用於重置或第一次載入)
-  // 更新：伙食津貼預設 3000，交通津貼預設 2500
+  // 定義初始預設值
   const DEFAULT_INCOME = {
     base: '', level: '', meal: 3000, transport: 2500, attendance: '', stockBonus: '', retentionBonus: ''
   };
@@ -54,23 +53,14 @@ const App = () => {
     }
   };
 
-  // --- 狀態管理 (初始化時優先讀取暫存) ---
-
-  // 1. 月薪收入
+  // --- 狀態管理 ---
   const [incomeItems, setIncomeItems] = useState(() => loadState('salary_income', DEFAULT_INCOME));
-
-  // 層次職加選單
   const [selectedLevelCode, setSelectedLevelCode] = useState(() => loadState('salary_level_code', ''));
-
-  // 2. 月扣款
   const [deductionItems, setDeductionItems] = useState(() => loadState('salary_deduction', DEFAULT_DEDUCTION));
-
-  // 3. 年度獎金
   const [bonuses, setBonuses] = useState(() => loadState('salary_bonuses', DEFAULT_BONUSES));
-
   const [showDetails, setShowDetails] = useState(false);
 
-  // 計算結果 (不需要存，因為每次都會重算)
+  // 計算結果
   const [results, setResults] = useState({
     monthlyGross: 0, monthlyCashGross: 0, monthlyDeduction: 0, monthlyNet: 0,
     bonusBase: 0, totalBonus: 0, annualGross: 0, annualNet: 0,
@@ -82,15 +72,13 @@ const App = () => {
   useEffect(() => { localStorage.setItem('salary_deduction', JSON.stringify(deductionItems)); }, [deductionItems]);
   useEffect(() => { localStorage.setItem('salary_bonuses', JSON.stringify(bonuses)); }, [bonuses]);
 
-  // --- 功能：清除所有暫存 (重置) ---
+  // --- 重置功能 ---
   const handleReset = () => {
     if (window.confirm('確定要清除所有輸入的資料並重置嗎？')) {
       setIncomeItems(DEFAULT_INCOME);
       setDeductionItems(DEFAULT_DEDUCTION);
       setBonuses(DEFAULT_BONUSES);
       setSelectedLevelCode('');
-      
-      // 清除 Storage
       localStorage.removeItem('salary_income');
       localStorage.removeItem('salary_deduction');
       localStorage.removeItem('salary_bonuses');
@@ -98,23 +86,56 @@ const App = () => {
     }
   };
 
-  // --- 自動計算 Effect: 全勤獎金 ---
+  // --- 自動計算 Effect: 包含全勤、持股、留才 ---
   useEffect(() => {
     const base = Number(incomeItems.base) || 0;
     const level = Number(incomeItems.level) || 0;
+
+    // 1. 全勤獎金: (薪額 + 職加) / 30 -> 四捨五入
+    let newAttendance = incomeItems.attendance;
     if (base === 0 && level === 0) {
-      // 只有當兩者都被清空時，才清空全勤 (避免讀取暫存時被覆蓋)
-      // 但為了保留使用者可能手動修改的彈性，這裡僅在計算邏輯觸發時更新
-      // 實務上如果從暫存讀取回來，這裡會再次觸發計算，維持一致性
-      if (incomeItems.attendance !== '') setIncomeItems(prev => ({ ...prev, attendance: '' }));
+      // 只有當兩者都被清空時，才清空全勤
+      if (incomeItems.attendance !== '') newAttendance = '';
     } else {
       const calcAttendance = Math.round((base + level) / 30);
-      // 只有數值不同時才更新，避免無限迴圈
       if (Number(incomeItems.attendance) !== calcAttendance) {
-        setIncomeItems(prev => ({ ...prev, attendance: calcAttendance }));
+        newAttendance = calcAttendance;
       }
     }
-  }, [incomeItems.base, incomeItems.level]);
+
+    // 2. 持股信託與留才增給計算
+    // 公式中間值 (Floor Factor): floor((A+B)*13.6/12/1000)
+    // A=Base, B=Level
+    // 這裡使用 Math.floor 代表無條件捨去
+    const baseTotal = base + level;
+    // 注意：如果 baseTotal 為 0，factor 為 0
+    const factor = Math.floor(baseTotal * 13.6 / 12 / 1000);
+
+    // 持股信託獎勵金: round(Factor * 100 * 0.3)
+    const calcStock = Math.round(factor * 100 * 0.3);
+
+    // 留才增給持股: round(Factor * 100 * 0.375)
+    const calcRetention = Math.round(factor * 100 * 0.375);
+
+    // 檢查是否有變動，避免無限迴圈
+    const currentStock = Number(incomeItems.stockBonus) || 0;
+    const currentRetention = Number(incomeItems.retentionBonus) || 0;
+
+    if (
+      newAttendance !== incomeItems.attendance ||
+      calcStock !== currentStock ||
+      calcRetention !== currentRetention
+    ) {
+      // 只有數值真的改變時才更新 State
+      setIncomeItems(prev => ({
+        ...prev,
+        attendance: newAttendance,
+        stockBonus: calcStock === 0 && baseTotal === 0 ? '' : calcStock, // 如果薪資為0則清空，否則顯示計算值
+        retentionBonus: calcRetention === 0 && baseTotal === 0 ? '' : calcRetention
+      }));
+    }
+
+  }, [incomeItems.base, incomeItems.level, incomeItems.attendance, incomeItems.stockBonus, incomeItems.retentionBonus]);
 
   // --- 自動計算 Effect: 同步扣款項目 ---
   useEffect(() => {
@@ -168,7 +189,6 @@ const App = () => {
 
   // --- 輔助函式 ---
   const formatCurrency = (num) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(num);
-
   const handleIncomeChange = (field, value) => setIncomeItems(prev => ({ ...prev, [field]: value }));
   const handleDeductionChange = (field, value) => setDeductionItems(prev => ({ ...prev, [field]: value }));
   const handleBonusChange = (id, field, value) => setBonuses(bonuses.map(b => b.id === id ? { ...b, [field]: value } : b));
@@ -178,19 +198,15 @@ const App = () => {
     setBonuses([...bonuses, { id: newId, name: '新增獎金', type: 'fixed', value: '' }]);
   };
   const removeBonus = (id) => setBonuses(bonuses.filter(b => b.id !== id));
-  
   const blockInvalidChar = (e) => { if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); };
 
   return (
     <div className="min-h-screen bg-slate-50 p-2 md:p-6 font-sans text-slate-800">
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
         
-        {/* 重置按鈕 (固定在右上角或顯眼處) */}
+        {/* 重置按鈕 */}
         <div className="lg:absolute lg:top-0 lg:right-0 mb-4 lg:mb-0 flex justify-end">
-           <button 
-             onClick={handleReset}
-             className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-500 transition border border-slate-200 hover:border-red-200 rounded-full px-3 py-1 bg-white shadow-sm"
-           >
+           <button onClick={handleReset} className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-500 transition border border-slate-200 hover:border-red-200 rounded-full px-3 py-1 bg-white shadow-sm">
              <RotateCcw className="w-3 h-3" /> 清除重填
            </button>
         </div>
@@ -201,14 +217,10 @@ const App = () => {
           {/* 1. 月薪收入設定 */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="bg-blue-600 px-6 py-4 flex justify-between items-center">
-              <h2 className="text-white font-bold flex items-center gap-2">
-                <ArrowUpCircle className="w-5 h-5" /> 每月薪津項目 (收入)
-              </h2>
+              <h2 className="text-white font-bold flex items-center gap-2"><ArrowUpCircle className="w-5 h-5" /> 每月薪津項目 (收入)</h2>
               <div className="text-right">
                 <div className="text-blue-100 text-sm">應領小計: {formatCurrency(results.monthlyGross)}</div>
-                {results.monthlyGross !== results.monthlyCashGross && (
-                  <div className="text-blue-200 text-xs">(現金應領: {formatCurrency(results.monthlyCashGross)})</div>
-                )}
+                {results.monthlyGross !== results.monthlyCashGross && (<div className="text-blue-200 text-xs">(現金應領: {formatCurrency(results.monthlyCashGross)})</div>)}
               </div>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -218,11 +230,7 @@ const App = () => {
                 <label className="block text-xs font-medium mb-1 text-blue-600">2. 層次職加 (獎金基底)</label>
                 <div className="flex gap-2">
                   <div className="relative w-1/3">
-                    <select
-                      value={selectedLevelCode}
-                      onChange={handleLevelSelectChange}
-                      className="w-full h-full p-2 pl-2 text-sm bg-blue-50 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-200 appearance-none font-mono"
-                    >
+                    <select value={selectedLevelCode} onChange={handleLevelSelectChange} className="w-full h-full p-2 pl-2 text-sm bg-blue-50 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-200 appearance-none font-mono">
                       <option value="">選擇</option>
                       <option value="custom">自訂</option>
                       {LEVEL_OPTIONS.map(opt => <option key={opt.code} value={opt.code}>{opt.code}</option>)}
@@ -230,10 +238,8 @@ const App = () => {
                     <ChevronDown className="absolute right-2 top-3 w-3 h-3 text-blue-400 pointer-events-none" />
                   </div>
                   <div className="relative flex-1">
-                      <input 
-                      type="number" min="0" value={incomeItems.level} onChange={(e) => handleLevelAmountChange(e.target.value)} onKeyDown={blockInvalidChar}
-                      placeholder="輸入金額" className="w-full p-2 pl-3 text-right border border-blue-300 bg-blue-50 rounded outline-none transition font-mono focus:ring-2 focus:ring-blue-200 placeholder:text-slate-300"
-                    />
+                      <input type="number" min="0" value={incomeItems.level} onChange={(e) => handleLevelAmountChange(e.target.value)} onKeyDown={blockInvalidChar}
+                      placeholder="輸入金額" className="w-full p-2 pl-3 text-right border border-blue-300 bg-blue-50 rounded outline-none transition font-mono focus:ring-2 focus:ring-blue-200 placeholder:text-slate-300" />
                   </div>
                 </div>
               </div>
@@ -242,27 +248,22 @@ const App = () => {
               <InputGroup label="4. 交通津貼" value={incomeItems.transport} onChange={(v) => handleIncomeChange('transport', v)} onKeyDown={blockInvalidChar} />
               
               <div className="md:col-span-1">
-                <InputGroup 
-                  label={<span className="flex items-center gap-1">5. 全勤獎金 (月)<span className="text-[10px] text-slate-400 font-normal ml-1">(薪額+職加)/30</span></span>}
-                  value={incomeItems.attendance} onChange={(v) => handleIncomeChange('attendance', v)} placeholder="自動計算" onKeyDown={blockInvalidChar}
-                />
+                <InputGroup label={<span className="flex items-center gap-1">5. 全勤獎金 (月)<span className="text-[10px] text-slate-400 font-normal ml-1">(薪額+職加)/30</span></span>}
+                  value={incomeItems.attendance} onChange={(v) => handleIncomeChange('attendance', v)} placeholder="自動計算" onKeyDown={blockInvalidChar} />
               </div>
 
-              <InputGroup label="6. 持股信託獎勵金" value={incomeItems.stockBonus} onChange={(v) => handleIncomeChange('stockBonus', v)} onKeyDown={blockInvalidChar} />
-              <InputGroup label="7. 留才增給持股" value={incomeItems.retentionBonus} onChange={(v) => handleIncomeChange('retentionBonus', v)} onKeyDown={blockInvalidChar} />
+              <InputGroup label="6. 持股信託獎勵金" value={incomeItems.stockBonus} onChange={(v) => handleIncomeChange('stockBonus', v)} placeholder="自動計算" onKeyDown={blockInvalidChar} />
+              <InputGroup label="7. 留才增給持股" value={incomeItems.retentionBonus} onChange={(v) => handleIncomeChange('retentionBonus', v)} placeholder="自動計算" onKeyDown={blockInvalidChar} />
             </div>
             <div className="bg-blue-50 px-6 py-2 text-xs text-blue-800 flex items-center gap-2">
-              <HelpCircle className="w-4 h-4" />
-              <span>說明：已將年度全勤獎金(0.4個月)視為包含在每月的「全勤獎金」中。</span>
+              <HelpCircle className="w-4 h-4" /> <span>說明：已將年度全勤獎金(0.4個月)視為包含在每月的「全勤獎金」中。</span>
             </div>
           </div>
 
           {/* 2. 月扣款設定 */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
              <div className="bg-slate-700 px-6 py-4 flex justify-between items-center">
-              <h2 className="text-white font-bold flex items-center gap-2">
-                <ArrowDownCircle className="w-5 h-5 text-red-400" /> 每月扣款／提存
-              </h2>
+              <h2 className="text-white font-bold flex items-center gap-2"><ArrowDownCircle className="w-5 h-5 text-red-400" /> 每月扣款／提存</h2>
                <span className="text-slate-300 text-sm">小計: -{formatCurrency(results.monthlyDeduction)}</span>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -280,19 +281,12 @@ const App = () => {
           {/* 3. 年度獎金設定 */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="bg-emerald-600 px-6 py-4 flex justify-between items-center">
-              <h2 className="text-white font-bold flex items-center gap-2">
-                <Wallet className="w-5 h-5" /> 年度獎金與分紅
-              </h2>
-              <button onClick={addBonus} className="text-xs bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1 rounded-full transition flex items-center gap-1">
-                <Plus className="w-3 h-3" /> 新增
-              </button>
+              <h2 className="text-white font-bold flex items-center gap-2"><Wallet className="w-5 h-5" /> 年度獎金與分紅</h2>
+              <button onClick={addBonus} className="text-xs bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1 rounded-full transition flex items-center gap-1"><Plus className="w-3 h-3" /> 新增</button>
             </div>
             <div className="p-4 space-y-2">
               <div className="grid grid-cols-12 gap-2 text-xs text-slate-500 px-2 mb-1">
-                <div className="col-span-4">項目名稱</div>
-                <div className="col-span-3">類型</div>
-                <div className="col-span-3">數值</div>
-                <div className="col-span-2 text-right">預估金額</div>
+                <div className="col-span-4">項目名稱</div><div className="col-span-3">類型</div><div className="col-span-3">數值</div><div className="col-span-2 text-right">預估金額</div>
               </div>
               {bonuses.map((bonus) => (
                 <div key={bonus.id} className="grid grid-cols-12 gap-2 items-center bg-slate-50 p-2 rounded hover:bg-slate-100 transition">
@@ -301,39 +295,28 @@ const App = () => {
                       className="w-full bg-transparent border-b border-transparent focus:border-emerald-500 outline-none text-sm font-medium" />
                   </div>
                   <div className="col-span-3">
-                    <select value={bonus.type} onChange={(e) => handleBonusChange(bonus.id, 'type', e.target.value)}
-                      className="w-full text-xs p-1 bg-white border border-slate-300 rounded" >
-                      <option value="month">個月 (Base)</option>
-                      <option value="fixed">固定金額</option>
+                    <select value={bonus.type} onChange={(e) => handleBonusChange(bonus.id, 'type', e.target.value)} className="w-full text-xs p-1 bg-white border border-slate-300 rounded" >
+                      <option value="month">個月 (Base)</option><option value="fixed">固定金額</option>
                     </select>
                   </div>
                   <div className="col-span-3 relative">
-                    <input type="number" min="0" value={bonus.value} onChange={(e) => handleBonusChange(bonus.id, 'value', e.target.value)}
-                      onKeyDown={blockInvalidChar} step={bonus.type === 'month' ? 0.1 : 1000}
-                      className="w-full p-1 text-right text-sm bg-white border border-slate-300 rounded outline-none focus:border-emerald-500" />
+                    <input type="number" min="0" value={bonus.value} onChange={(e) => handleBonusChange(bonus.id, 'value', e.target.value)} onKeyDown={blockInvalidChar} step={bonus.type === 'month' ? 0.1 : 1000} className="w-full p-1 text-right text-sm bg-white border border-slate-300 rounded outline-none focus:border-emerald-500" />
                   </div>
                   <div className="col-span-2 flex justify-end items-center gap-2">
                     <span className="text-sm font-mono text-emerald-700">
-                      {bonus.type === 'month' 
-                        ? ((Number(bonus.value) || 0) * results.bonusBase / 10000).toFixed(1) + '萬'
-                        : ((Number(bonus.value) || 0) / 10000).toFixed(1) + '萬'
-                      }
+                      {bonus.type === 'month' ? ((Number(bonus.value) || 0) * results.bonusBase / 10000).toFixed(1) + '萬' : ((Number(bonus.value) || 0) / 10000).toFixed(1) + '萬'}
                     </span>
                     <button onClick={() => removeBonus(bonus.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-3 h-3"/></button>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="bg-emerald-50 px-6 py-2 text-right text-sm font-bold text-emerald-800">
-              獎金總計: {formatCurrency(results.totalBonus)}
-            </div>
+            <div className="bg-emerald-50 px-6 py-2 text-right text-sm font-bold text-emerald-800">獎金總計: {formatCurrency(results.totalBonus)}</div>
           </div>
-
         </div>
 
         {/* 右側：儀表板 */}
         <div className="lg:col-span-5 space-y-6">
-          
           <div className="bg-slate-800 text-white rounded-2xl shadow-xl p-6 md:p-8 flex flex-col items-center justify-center text-center relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-emerald-400 to-blue-500"></div>
             <h3 className="text-slate-400 text-sm font-medium uppercase tracking-wider mb-2">預估稅前總年薪</h3>
