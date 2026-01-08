@@ -3,7 +3,6 @@ import { Calculator, DollarSign, PieChart, Plus, Trash2, Wallet, ArrowDownCircle
 
 const App = () => {
   // --- 常數設定：層次職加對照表 ---
-  // 已更新為您提供的完整數據
   const LEVEL_OPTIONS = useMemo(() => [
     { code: '19', value: 51795 },
     { code: '18', value: 44735 },
@@ -29,36 +28,36 @@ const App = () => {
 
   // --- 狀態管理 ---
 
-  // 1. 月薪收入項目
+  // 1. 月薪收入項目 (預設為空白字串)
   const [incomeItems, setIncomeItems] = useState({
-    base: 0,       // 薪額
-    level: 0,       // 層次職加 (預設對應 00)
-    meal: 0,        // 伙食津貼
-    transport: 0,   // 交通津貼
-    attendance: 0,  // 全勤獎金 (月)
+    base: '',       // 薪額
+    level: '',      // 層次職加
+    meal: '',       // 伙食津貼
+    transport: '',  // 交通津貼
+    attendance: '', // 全勤獎金 (月)
   });
 
-  // 層次職加的選單狀態 (預設 '00')
-  const [selectedLevelCode, setSelectedLevelCode] = useState('00');
+  // 層次職加的選單狀態 (預設無選擇)
+  const [selectedLevelCode, setSelectedLevelCode] = useState('');
 
-  // 2. 月扣款項目
+  // 2. 月扣款項目 (預設為空白字串)
   const [deductionItems, setDeductionItems] = useState({
-    unionFee: 0,     // 工會會費
-    unionMutual: 0,   // 工會傷亡互助金
-    labor: 0,        // 勞保費
-    welfare: 0,      // 職工福利金
-    health: 0,       // 全民健保費
-    stockTrust: 0,   // 持股信託提存金
+    unionFee: '',     // 工會會費
+    unionMutual: '',  // 工會傷亡互助金
+    labor: '',        // 勞保費
+    welfare: '',      // 職工福利金
+    health: '',       // 全民健保費
+    stockTrust: '',   // 持股信託提存金
   });
 
-  // 3. 年度獎金項目
+  // 3. 年度獎金項目 (保留預設倍率，但移除浮水印)
   const [bonuses, setBonuses] = useState([
-    { id: 1, name: '春節獎金', type: 'month', value: 0 },
-    { id: 2, name: '端午節獎金', type: 'month', value: 0 },
-    { id: 3, name: '中秋節獎金', type: 'month', value: 0 },
-    { id: 5, name: '績效獎金', type: 'month', value: 0 },
-    { id: 6, name: '企業化特別獎金', type: 'fixed', value: 0 },
-    { id: 7, name: '員工酬勞', type: 'fixed', value: 0 },
+    { id: 1, name: '春節獎金', type: 'month', value: 1.0 },
+    { id: 2, name: '端午節獎金', type: 'month', value: 0.3 },
+    { id: 3, name: '中秋節獎金', type: 'month', value: 0.3 },
+    { id: 5, name: '績效獎金', type: 'month', value: 2.6 },
+    { id: 6, name: '企業化特別獎金', type: 'fixed', value: 200000 },
+    { id: 7, name: '員工酬勞', type: 'fixed', value: 50000 },
   ]);
 
   const [showDetails, setShowDetails] = useState(false);
@@ -91,38 +90,45 @@ const App = () => {
 
   // 當手動輸入金額時
   const handleLevelAmountChange = (value) => {
-    const numValue = Number(value);
-    setIncomeItems(prev => ({ ...prev, level: numValue }));
+    // 允許輸入空白
+    const val = value === '' ? '' : Number(value);
+    setIncomeItems(prev => ({ ...prev, level: val }));
     
-    // 檢查輸入的值是否剛好對應某個選項，如果是則選中該選項，否則切換為自定義
-    const matchedOption = LEVEL_OPTIONS.find(opt => opt.value === numValue);
-    if (matchedOption) {
-      setSelectedLevelCode(matchedOption.code);
-    } else {
-      setSelectedLevelCode('custom');
+    if (value !== '') {
+      const numValue = Number(value);
+      const matchedOption = LEVEL_OPTIONS.find(opt => opt.value === numValue);
+      if (matchedOption) {
+        setSelectedLevelCode(matchedOption.code);
+      } else {
+        setSelectedLevelCode('custom');
+      }
     }
   };
 
   // --- 計算邏輯 ---
   useEffect(() => {
+    // 輔助函式：處理空字串或無效數值，轉為 0 計算
+    const val = (v) => (v === '' || isNaN(Number(v))) ? 0 : Number(v);
+
     // 1. 計算月薪總額
-    const monthlyGross = Object.values(incomeItems).reduce((a, b) => a + Number(b), 0);
+    const monthlyGross = Object.values(incomeItems).reduce((a, b) => a + val(b), 0);
     
     // 2. 計算月扣款總額
-    const monthlyDeduction = Object.values(deductionItems).reduce((a, b) => a + Number(b), 0);
+    const monthlyDeduction = Object.values(deductionItems).reduce((a, b) => a + val(b), 0);
     
     // 3. 計算實領月薪
     const monthlyNet = monthlyGross - monthlyDeduction;
 
     // 4. 計算獎金基底 (薪額 + 層次職加)
-    const bonusBase = Number(incomeItems.base) + Number(incomeItems.level);
+    const bonusBase = val(incomeItems.base) + val(incomeItems.level);
 
     // 5. 計算年度獎金總額
     const totalBonus = bonuses.reduce((sum, item) => {
+      const itemValue = val(item.value);
       if (item.type === 'month') {
-        return sum + (item.value * bonusBase);
+        return sum + (itemValue * bonusBase);
       } else {
-        return sum + Number(item.value);
+        return sum + itemValue;
       }
     }, 0);
 
@@ -148,11 +154,13 @@ const App = () => {
   };
 
   const handleIncomeChange = (field, value) => {
-    setIncomeItems(prev => ({ ...prev, [field]: Number(value) }));
+    const val = value === '' ? '' : Number(value);
+    setIncomeItems(prev => ({ ...prev, [field]: val }));
   };
 
   const handleDeductionChange = (field, value) => {
-    setDeductionItems(prev => ({ ...prev, [field]: Number(value) }));
+    const val = value === '' ? '' : Number(value);
+    setDeductionItems(prev => ({ ...prev, [field]: val }));
   };
 
   const handleBonusChange = (id, field, value) => {
@@ -198,6 +206,7 @@ const App = () => {
                       onChange={handleLevelSelectChange}
                       className="w-full h-full p-2 pl-2 text-sm bg-blue-50 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-200 appearance-none font-mono"
                     >
+                      <option value="">選擇</option>
                       <option value="custom">自訂</option>
                       {LEVEL_OPTIONS.map(opt => (
                         <option key={opt.code} value={opt.code}>
@@ -212,7 +221,8 @@ const App = () => {
                       type="number" 
                       value={incomeItems.level} 
                       onChange={(e) => handleLevelAmountChange(e.target.value)}
-                      className="w-full p-2 pl-3 text-right border border-blue-300 bg-blue-50 rounded outline-none transition font-mono focus:ring-2 focus:ring-blue-200"
+                      placeholder="輸入金額"
+                      className="w-full p-2 pl-3 text-right border border-blue-300 bg-blue-50 rounded outline-none transition font-mono focus:ring-2 focus:ring-blue-200 placeholder:text-slate-300"
                     />
                   </div>
                 </div>
@@ -291,15 +301,13 @@ const App = () => {
                       step={bonus.type === 'month' ? 0.1 : 1000}
                       className="w-full p-1 text-right text-sm bg-white border border-slate-300 rounded outline-none focus:border-emerald-500"
                     />
-                      <span className="absolute right-8 top-1.5 text-xs text-slate-400 pointer-events-none">
-                        {bonus.type === 'month' ? '月' : ''}
-                      </span>
+                     {/* 這裡已經移除了浮水印 "月" */}
                   </div>
                   <div className="col-span-2 flex justify-end items-center gap-2">
                     <span className="text-sm font-mono text-emerald-700">
                       {bonus.type === 'month' 
-                        ? (bonus.value * results.bonusBase / 10000).toFixed(1) + '萬'
-                        : (bonus.value / 10000).toFixed(1) + '萬'
+                        ? ((Number(bonus.value) || 0) * results.bonusBase / 10000).toFixed(1) + '萬'
+                        : ((Number(bonus.value) || 0) / 10000).toFixed(1) + '萬'
                       }
                     </span>
                     <button onClick={() => removeBonus(bonus.id)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-3 h-3"/></button>
@@ -365,7 +373,7 @@ const App = () => {
                   <div className="font-bold text-slate-800 mb-1">A. 固定月薪總和 (×12)</div>
                   <div className="pl-4 border-l-2 border-blue-200 space-y-1">
                     <div className="flex justify-between">
-                      <span>( {incomeItems.base} + {incomeItems.level} + {incomeItems.meal} + {incomeItems.transport} + {incomeItems.attendance} ) × 12</span>
+                      <span>( {Number(incomeItems.base)||0} + {Number(incomeItems.level)||0} + {Number(incomeItems.meal)||0} + {Number(incomeItems.transport)||0} + {Number(incomeItems.attendance)||0} ) × 12</span>
                     </div>
                     <div className="flex justify-between text-blue-600 font-bold">
                       <span>= {formatCurrency(results.monthlyGross * 12)}</span>
@@ -377,7 +385,7 @@ const App = () => {
                 <div>
                   <div className="font-bold text-slate-800 mb-1">B. 獎金計算基底 (Base)</div>
                     <div className="pl-4 border-l-2 border-emerald-200 mb-2 text-xs text-slate-500">
-                      <span>薪額 {incomeItems.base} + 層次職加 {incomeItems.level} = </span>
+                      <span>薪額 {Number(incomeItems.base)||0} + 層次職加 {Number(incomeItems.level)||0} = </span>
                       <span className="font-bold text-emerald-600">{formatCurrency(results.bonusBase)}</span>
                     </div>
 
@@ -470,7 +478,7 @@ const App = () => {
 };
 
 // 小元件：輸入框組合
-const InputGroup = ({ label, value, onChange, highlight = false }) => (
+const InputGroup = ({ label, value, onChange, highlight = false, placeholder = "輸入金額" }) => (
   <div>
     <label className={`block text-xs font-medium mb-1 ${highlight ? 'text-blue-600' : 'text-slate-500'}`}>
       {label}
@@ -480,7 +488,8 @@ const InputGroup = ({ label, value, onChange, highlight = false }) => (
         type="number" 
         value={value} 
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full p-2 pl-3 text-right border rounded outline-none transition font-mono ${highlight ? 'border-blue-300 bg-blue-50 focus:ring-2 focus:ring-blue-200' : 'border-slate-200 bg-white focus:border-slate-400'}`}
+        placeholder={placeholder}
+        className={`w-full p-2 pl-3 text-right border rounded outline-none transition font-mono placeholder:text-slate-300 ${highlight ? 'border-blue-300 bg-blue-50 focus:ring-2 focus:ring-blue-200' : 'border-slate-200 bg-white focus:border-slate-400'}`}
       />
     </div>
   </div>
@@ -491,12 +500,12 @@ const BarItem = ({ label, value, total, color }) => (
   <div>
     <div className="flex justify-between text-xs mb-1 text-slate-500">
       <span>{label}</span>
-      <span>{Math.round((value / total) * 100)}%</span>
+      <span>{total > 0 ? Math.round((value / total) * 100) : 0}%</span>
     </div>
     <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
       <div 
         className={`${color} h-full rounded-full transition-all duration-500`} 
-        style={{ width: `${(value / total) * 100}%` }}
+        style={{ width: `${total > 0 ? (value / total) * 100 : 0}%` }}
       ></div>
     </div>
   </div>
