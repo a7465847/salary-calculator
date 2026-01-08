@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calculator, DollarSign, PieChart, Plus, Trash2, Wallet, ArrowDownCircle, ArrowUpCircle, HelpCircle, FileText, X, ChevronDown } from 'lucide-react';
+import { Calculator, DollarSign, PieChart, Plus, Trash2, Wallet, ArrowDownCircle, ArrowUpCircle, HelpCircle, FileText, X, ChevronDown, Lock } from 'lucide-react';
 
 const App = () => {
   // --- 常數設定：層次職加對照表 ---
@@ -30,11 +30,13 @@ const App = () => {
 
   // 1. 月薪收入項目 (預設為空白字串)
   const [incomeItems, setIncomeItems] = useState({
-    base: '',       // 薪額
-    level: '',      // 層次職加
-    meal: '',       // 伙食津貼
-    transport: '',  // 交通津貼
-    attendance: '', // 全勤獎金 (月)
+    base: '',           // 1. 薪額
+    level: '',          // 2. 層次職加
+    meal: '',           // 3. 伙食津貼
+    transport: '',      // 4. 交通津貼
+    attendance: '',     // 5. 全勤獎金 (月)
+    stockBonus: '',     // 6. 持股信託獎勵金 (新增)
+    retentionBonus: '', // 7. 留才增給持股 (新增)
   });
 
   // 層次職加的選單狀態 (預設無選擇)
@@ -42,15 +44,17 @@ const App = () => {
 
   // 2. 月扣款項目 (預設為空白字串)
   const [deductionItems, setDeductionItems] = useState({
-    unionFee: '',     // 工會會費
-    unionMutual: '',  // 工會傷亡互助金
-    labor: '',        // 勞保費
-    welfare: '',      // 職工福利金
-    health: '',       // 全民健保費
-    stockTrust: '',   // 持股信託提存金
+    unionFee: '',       // 1. 工會會費
+    unionMutual: '',    // 2. 工會傷亡互助金
+    labor: '',          // 3. 勞保費
+    welfare: '',        // 4. 職工福利金
+    health: '',         // 5. 全民健保費
+    stockTrust: '',     // 6. 持股信託提存金
+    stockBonus: '',     // 7. 持股信託獎勵金 (新增，對應收入)
+    retentionBonus: '', // 8. 留才增給持股 (新增，對應收入)
   });
 
-  // 3. 年度獎金項目 (保留預設倍率，但移除浮水印)
+  // 3. 年度獎金項目
   const [bonuses, setBonuses] = useState([
     { id: 1, name: '春節獎金', type: 'month', value: 1.0 },
     { id: 2, name: '端午節獎金', type: 'month', value: 0.3 },
@@ -64,7 +68,8 @@ const App = () => {
 
   // --- 計算結果狀態 ---
   const [results, setResults] = useState({
-    monthlyGross: 0,
+    monthlyGross: 0,     // 應領總額 (含持股/留才)
+    monthlyCashGross: 0, // 現金應領 (不含持股/留才)
     monthlyDeduction: 0,
     monthlyNet: 0,
     bonusBase: 0,
@@ -73,8 +78,34 @@ const App = () => {
     annualNet: 0,
   });
 
+  // --- 自動計算 Effect: 全勤獎金 ---
+  useEffect(() => {
+    // 當 薪額(base) 或 層次職加(level) 變動時，自動計算全勤獎金
+    // 公式: (薪額 + 層次職加) / 30，四捨五入
+    const base = Number(incomeItems.base) || 0;
+    const level = Number(incomeItems.level) || 0;
+    
+    // 如果兩者都是0或空，全勤就清空，否則計算
+    if (base === 0 && level === 0) {
+      setIncomeItems(prev => ({ ...prev, attendance: '' }));
+    } else {
+      const calcAttendance = Math.round((base + level) / 30);
+      setIncomeItems(prev => ({ ...prev, attendance: calcAttendance }));
+    }
+  }, [incomeItems.base, incomeItems.level]);
+
+  // --- 自動計算 Effect: 同步扣款項目 ---
+  useEffect(() => {
+    // 當收入的「持股信託獎勵金」或「留才增給持股」變動時，同步更新扣款項目
+    setDeductionItems(prev => ({
+      ...prev,
+      stockBonus: incomeItems.stockBonus,
+      retentionBonus: incomeItems.retentionBonus
+    }));
+  }, [incomeItems.stockBonus, incomeItems.retentionBonus]);
+
+
   // --- 處理層次職加變更 ---
-  
   // 當選單改變時
   const handleLevelSelectChange = (e) => {
     const code = e.target.value;
@@ -90,9 +121,8 @@ const App = () => {
 
   // 當手動輸入金額時
   const handleLevelAmountChange = (value) => {
-    // 允許輸入空白
-    const val = value === '' ? '' : Number(value);
-    setIncomeItems(prev => ({ ...prev, level: val }));
+    // 直接儲存原始輸入字串，避免小數點輸入問題
+    setIncomeItems(prev => ({ ...prev, level: value }));
     
     if (value !== '') {
       const numValue = Number(value);
@@ -105,18 +135,22 @@ const App = () => {
     }
   };
 
-  // --- 計算邏輯 ---
+  // --- 主要計算邏輯 ---
   useEffect(() => {
     // 輔助函式：處理空字串或無效數值，轉為 0 計算
     const val = (v) => (v === '' || isNaN(Number(v))) ? 0 : Number(v);
 
-    // 1. 計算月薪總額
+    // 1. 計算月薪總額 (應領，含持股/留才)
     const monthlyGross = Object.values(incomeItems).reduce((a, b) => a + val(b), 0);
     
+    // 1.1 計算現金月薪 (排除 持股信託獎勵金、留才增給持股)
+    const stockItemsValue = val(incomeItems.stockBonus) + val(incomeItems.retentionBonus);
+    const monthlyCashGross = monthlyGross - stockItemsValue;
+
     // 2. 計算月扣款總額
     const monthlyDeduction = Object.values(deductionItems).reduce((a, b) => a + val(b), 0);
     
-    // 3. 計算實領月薪
+    // 3. 計算實領月薪 (應領 - 應扣)
     const monthlyNet = monthlyGross - monthlyDeduction;
 
     // 4. 計算獎金基底 (薪額 + 層次職加)
@@ -138,6 +172,7 @@ const App = () => {
 
     setResults({
       monthlyGross,
+      monthlyCashGross,
       monthlyDeduction,
       monthlyNet,
       bonusBase,
@@ -154,26 +189,35 @@ const App = () => {
   };
 
   const handleIncomeChange = (field, value) => {
-    const val = value === '' ? '' : Number(value);
-    setIncomeItems(prev => ({ ...prev, [field]: val }));
+    // 儲存原始字串以支援小數點輸入
+    setIncomeItems(prev => ({ ...prev, [field]: value }));
   };
 
   const handleDeductionChange = (field, value) => {
-    const val = value === '' ? '' : Number(value);
-    setDeductionItems(prev => ({ ...prev, [field]: val }));
+    setDeductionItems(prev => ({ ...prev, [field]: value }));
   };
 
   const handleBonusChange = (id, field, value) => {
+    // 儲存原始字串，不強制轉型，以便輸入小數點
     setBonuses(bonuses.map(b => b.id === id ? { ...b, [field]: value } : b));
   };
 
   const addBonus = () => {
     const newId = Math.max(...bonuses.map(b => b.id), 0) + 1;
-    setBonuses([...bonuses, { id: newId, name: '新增獎金', type: 'fixed', value: 0 }]);
+    setBonuses([...bonuses, { id: newId, name: '新增獎金', type: 'fixed', value: '' }]);
   };
 
   const removeBonus = (id) => {
     setBonuses(bonuses.filter(b => b.id !== id));
+  };
+
+  // --- 鍵盤事件攔截：防止輸入非數字字元 ---
+  const blockInvalidChar = (e) => {
+    // 允許的按鍵: 數字, Backspace, Delete, Tab, Arrow keys, Enter, 小數點
+    // 阻擋: e, E, +, -
+    if (['e', 'E', '+', '-'].includes(e.key)) {
+      e.preventDefault();
+    }
   };
 
   return (
@@ -189,15 +233,26 @@ const App = () => {
               <h2 className="text-white font-bold flex items-center gap-2">
                 <ArrowUpCircle className="w-5 h-5" /> 每月薪津項目 (收入)
               </h2>
-              <span className="text-blue-100 text-sm">小計: {formatCurrency(results.monthlyGross)}</span>
+              <div className="text-right">
+                <div className="text-blue-100 text-sm">應領小計: {formatCurrency(results.monthlyGross)}</div>
+                {results.monthlyGross !== results.monthlyCashGross && (
+                  <div className="text-blue-200 text-xs">(現金應領: {formatCurrency(results.monthlyCashGross)})</div>
+                )}
+              </div>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <InputGroup label="1. 薪額 (獎金基底)" value={incomeItems.base} onChange={(v) => handleIncomeChange('base', v)} highlight />
+              <InputGroup 
+                label="1. 薪額 (獎金基底)" 
+                value={incomeItems.base} 
+                onChange={(v) => handleIncomeChange('base', v)} 
+                highlight 
+                onKeyDown={blockInvalidChar} 
+              />
               
               {/* 特別處理：層次職加 (包含選單與輸入框) */}
               <div className="md:col-span-1">
                 <label className="block text-xs font-medium mb-1 text-blue-600">
-                  2. 層次職加
+                  2. 層次職加 (獎金基底)
                 </label>
                 <div className="flex gap-2">
                   <div className="relative w-1/3">
@@ -219,8 +274,10 @@ const App = () => {
                   <div className="relative flex-1">
                       <input 
                       type="number" 
+                      min="0"
                       value={incomeItems.level} 
                       onChange={(e) => handleLevelAmountChange(e.target.value)}
+                      onKeyDown={blockInvalidChar}
                       placeholder="輸入金額"
                       className="w-full p-2 pl-3 text-right border border-blue-300 bg-blue-50 rounded outline-none transition font-mono focus:ring-2 focus:ring-blue-200 placeholder:text-slate-300"
                     />
@@ -228,13 +285,36 @@ const App = () => {
                 </div>
               </div>
 
-              <InputGroup label="3. 伙食津貼" value={incomeItems.meal} onChange={(v) => handleIncomeChange('meal', v)} />
-              <InputGroup label="4. 交通津貼" value={incomeItems.transport} onChange={(v) => handleIncomeChange('transport', v)} />
-              <InputGroup label="5. 全勤獎金 (月)" value={incomeItems.attendance} onChange={(v) => handleIncomeChange('attendance', v)} />
+              <InputGroup label="3. 伙食津貼" value={incomeItems.meal} onChange={(v) => handleIncomeChange('meal', v)} onKeyDown={blockInvalidChar} />
+              <InputGroup label="4. 交通津貼" value={incomeItems.transport} onChange={(v) => handleIncomeChange('transport', v)} onKeyDown={blockInvalidChar} />
+              
+              {/* 全勤獎金 (自動計算) */}
+              <div className="md:col-span-1">
+                <InputGroup 
+                  label={
+                    <span className="flex items-center gap-1">
+                      5. 全勤獎金 (月)
+                      <span className="text-[10px] text-slate-400 font-normal ml-1">
+                        (薪額+職加)/30
+                      </span>
+                    </span>
+                  }
+                  value={incomeItems.attendance} 
+                  onChange={(v) => handleIncomeChange('attendance', v)} 
+                  placeholder="自動計算"
+                  readOnly={false} 
+                  onKeyDown={blockInvalidChar}
+                />
+              </div>
+
+              {/* 新增欄位 */}
+              <InputGroup label="6. 持股信託獎勵金" value={incomeItems.stockBonus} onChange={(v) => handleIncomeChange('stockBonus', v)} onKeyDown={blockInvalidChar} />
+              <InputGroup label="7. 留才增給持股" value={incomeItems.retentionBonus} onChange={(v) => handleIncomeChange('retentionBonus', v)} onKeyDown={blockInvalidChar} />
+
             </div>
             <div className="bg-blue-50 px-6 py-2 text-xs text-blue-800 flex items-center gap-2">
               <HelpCircle className="w-4 h-4" />
-              <span>說明：已將年度全勤獎金(0.4個月)視為包含在每月的「全勤獎金」中，故不在此重複計算年度獎金。</span>
+              <span>說明：已將年度全勤獎金(0.4個月)視為包含在每月的「全勤獎金」中。</span>
             </div>
           </div>
 
@@ -247,12 +327,16 @@ const App = () => {
                <span className="text-slate-300 text-sm">小計: -{formatCurrency(results.monthlyDeduction)}</span>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <InputGroup label="1. 工會會費" value={deductionItems.unionFee} onChange={(v) => handleDeductionChange('unionFee', v)} />
-              <InputGroup label="2. 傷亡互助金" value={deductionItems.unionMutual} onChange={(v) => handleDeductionChange('unionMutual', v)} />
-              <InputGroup label="3. 勞保費" value={deductionItems.labor} onChange={(v) => handleDeductionChange('labor', v)} />
-              <InputGroup label="4. 職工福利金" value={deductionItems.welfare} onChange={(v) => handleDeductionChange('welfare', v)} />
-              <InputGroup label="5. 全民健保費" value={deductionItems.health} onChange={(v) => handleDeductionChange('health', v)} />
-              <InputGroup label="6. 持股信託提存金" value={deductionItems.stockTrust} onChange={(v) => handleDeductionChange('stockTrust', v)} />
+              <InputGroup label="1. 工會會費" value={deductionItems.unionFee} onChange={(v) => handleDeductionChange('unionFee', v)} onKeyDown={blockInvalidChar} />
+              <InputGroup label="2. 傷亡互助金" value={deductionItems.unionMutual} onChange={(v) => handleDeductionChange('unionMutual', v)} onKeyDown={blockInvalidChar} />
+              <InputGroup label="3. 勞保費" value={deductionItems.labor} onChange={(v) => handleDeductionChange('labor', v)} onKeyDown={blockInvalidChar} />
+              <InputGroup label="4. 職工福利金" value={deductionItems.welfare} onChange={(v) => handleDeductionChange('welfare', v)} onKeyDown={blockInvalidChar} />
+              <InputGroup label="5. 全民健保費" value={deductionItems.health} onChange={(v) => handleDeductionChange('health', v)} onKeyDown={blockInvalidChar} />
+              <InputGroup label="6. 持股信託提存金" value={deductionItems.stockTrust} onChange={(v) => handleDeductionChange('stockTrust', v)} onKeyDown={blockInvalidChar} />
+              
+              {/* 自動帶入且鎖定的欄位 */}
+              <InputGroup label="7. 持股信託獎勵金" value={deductionItems.stockBonus} onChange={()=>{}} placeholder="自動帶入" readOnly locked />
+              <InputGroup label="8. 留才增給持股" value={deductionItems.retentionBonus} onChange={()=>{}} placeholder="自動帶入" readOnly locked />
             </div>
           </div>
 
@@ -296,12 +380,13 @@ const App = () => {
                   <div className="col-span-3 relative">
                     <input 
                       type="number" 
+                      min="0"
                       value={bonus.value}
-                      onChange={(e) => handleBonusChange(bonus.id, 'value', Number(e.target.value))}
+                      onChange={(e) => handleBonusChange(bonus.id, 'value', e.target.value)}
+                      onKeyDown={blockInvalidChar}
                       step={bonus.type === 'month' ? 0.1 : 1000}
                       className="w-full p-1 text-right text-sm bg-white border border-slate-300 rounded outline-none focus:border-emerald-500"
                     />
-                     {/* 這裡已經移除了浮水印 "月" */}
                   </div>
                   <div className="col-span-2 flex justify-end items-center gap-2">
                     <span className="text-sm font-mono text-emerald-700">
@@ -333,8 +418,8 @@ const App = () => {
             <div className="text-4xl md:text-5xl font-bold text-white mb-2 font-mono tracking-tight">
               {formatCurrency(results.annualGross)}
             </div>
-            <div className="text-slate-400 text-sm mb-6">
-              (月實領約 {formatCurrency(results.monthlyNet)})
+            <div className="text-slate-400 text-sm mb-6 flex flex-col items-center gap-1">
+              <span>(月實領約 {formatCurrency(results.monthlyNet)})</span>
             </div>
 
             <div className="w-full grid grid-cols-2 gap-4 border-t border-slate-700 pt-6">
@@ -368,45 +453,85 @@ const App = () => {
               </div>
               
               <div className="space-y-4 text-sm font-mono text-slate-600">
-                {/* 1. 月薪部分 */}
-                <div>
-                  <div className="font-bold text-slate-800 mb-1">A. 固定月薪總和 (×12)</div>
-                  <div className="pl-4 border-l-2 border-blue-200 space-y-1">
-                    <div className="flex justify-between">
-                      <span>( {Number(incomeItems.base)||0} + {Number(incomeItems.level)||0} + {Number(incomeItems.meal)||0} + {Number(incomeItems.transport)||0} + {Number(incomeItems.attendance)||0} ) × 12</span>
-                    </div>
-                    <div className="flex justify-between text-blue-600 font-bold">
-                      <span>= {formatCurrency(results.monthlyGross * 12)}</span>
-                    </div>
-                  </div>
+                
+                {/* 1. 月薪部分 - 特別強化顯示 */}
+                <div className="border-b border-slate-100 pb-4">
+                   <div className="font-bold text-slate-800 mb-2 text-base">一、每月實領計算 (Cash Flow)</div>
+                   
+                   {/* 收入分解 */}
+                   <div className="pl-2 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">1. 應領月薪總額 (Gross)</span>
+                        <span className="text-blue-600 font-bold">{formatCurrency(results.monthlyGross)}</span>
+                      </div>
+                      <div className="text-xs text-slate-400 pl-4 mb-2">
+                         (含 薪額+職加+伙食+交通+全勤+持股+留才)
+                      </div>
+
+                      <div className="flex justify-between items-center text-red-400">
+                        <span>2. 應扣款項總額 (Deduction)</span>
+                        <span>- {formatCurrency(results.monthlyDeduction)}</span>
+                      </div>
+                      <div className="text-xs text-slate-400 pl-4 mb-2">
+                         (含 工會+勞健保+福利金+持股自提+持股獎勵+留才)
+                      </div>
+                      
+                      {/* 計算說明核心 */}
+                      <div className="bg-slate-50 p-3 rounded text-xs space-y-1 mt-2">
+                        <div className="font-bold text-slate-700 mb-1">實領計算說明：</div>
+                        <div className="flex justify-between">
+                           <span>現金項目 (薪+職+伙+交+勤)</span>
+                           <span>{formatCurrency(results.monthlyCashGross)}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-400">
+                           <span>非現金項目 (持股+留才)</span>
+                           <span>+ {formatCurrency((Number(incomeItems.stockBonus)||0) + (Number(incomeItems.retentionBonus)||0))}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-400 border-b border-slate-200 pb-1">
+                           <span>非現金扣回 (持股+留才)</span>
+                           <span>- {formatCurrency((Number(deductionItems.stockBonus)||0) + (Number(deductionItems.retentionBonus)||0))}</span>
+                        </div>
+                        <div className="flex justify-between text-red-400 pt-1">
+                           <span>常規扣款 (勞健保等)</span>
+                           <span>- {formatCurrency(results.monthlyDeduction - (Number(deductionItems.stockBonus)||0) - (Number(deductionItems.retentionBonus)||0))}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center pt-2 border-t border-slate-200 font-bold text-lg text-slate-800">
+                        <span>每月實領 (Net)</span>
+                        <span>{formatCurrency(results.monthlyNet)}</span>
+                      </div>
+                   </div>
                 </div>
 
                 {/* 2. 獎金部分 */}
                 <div>
-                  <div className="font-bold text-slate-800 mb-1">B. 獎金計算基底 (Base)</div>
-                    <div className="pl-4 border-l-2 border-emerald-200 mb-2 text-xs text-slate-500">
-                      <span>薪額 {Number(incomeItems.base)||0} + 層次職加 {Number(incomeItems.level)||0} = </span>
+                  <div className="font-bold text-slate-800 mb-1">二、年度獎金明細</div>
+                  <div className="pl-4 border-l-2 border-emerald-200 space-y-1">
+                    <div className="mb-2 text-xs text-slate-500">
+                      <span>獎金基底 (薪額+職加) = </span>
                       <span className="font-bold text-emerald-600">{formatCurrency(results.bonusBase)}</span>
                     </div>
 
-                  <div className="font-bold text-slate-800 mb-1">C. 各項獎金明細</div>
-                  <div className="pl-4 border-l-2 border-emerald-200 space-y-1">
-                    {bonuses.map(b => (
-                      <div key={b.id} className="flex justify-between">
-                        <span>
-                          {b.name} 
-                          {b.type === 'month' ? ` (${b.value}個月)` : ''}
-                        </span>
-                        <span>
-                          {b.type === 'month' 
-                            ? `${formatCurrency(results.bonusBase)} × ${b.value} = ${formatCurrency(b.value * results.bonusBase)}`
-                            : formatCurrency(b.value)
-                          }
-                        </span>
-                      </div>
-                    ))}
+                    {bonuses.map(b => {
+                      const val = Number(b.value) || 0;
+                      return (
+                        <div key={b.id} className="flex justify-between">
+                          <span>
+                            {b.name} 
+                            {b.type === 'month' ? ` (${val}個月)` : ''}
+                          </span>
+                          <span>
+                            {b.type === 'month' 
+                              ? `${formatCurrency(results.bonusBase)} × ${val} = ${formatCurrency(val * results.bonusBase)}`
+                              : formatCurrency(val)
+                            }
+                          </span>
+                        </div>
+                      );
+                    })}
                     <div className="flex justify-between text-emerald-600 font-bold border-t border-slate-100 pt-1 mt-1">
-                      <span>獎金小計</span>
+                      <span>獎金總計</span>
                       <span>= {formatCurrency(results.totalBonus)}</span>
                     </div>
                   </div>
@@ -415,7 +540,7 @@ const App = () => {
                 {/* 3. 總計 */}
                 <div className="pt-2 border-t border-slate-200 mt-2">
                   <div className="flex justify-between font-bold text-base text-slate-900">
-                    <span>總年薪 (A + C)</span>
+                    <span>總年薪 (月薪x12 + 獎金)</span>
                     <span>{formatCurrency(results.annualGross)}</span>
                   </div>
                 </div>
@@ -438,7 +563,7 @@ const App = () => {
                   color="bg-blue-500" 
                 />
                 <BarItem 
-                  label="月津貼 (伙食+交通+全勤)" 
+                  label="月津貼 (含伙食、交通、持股等)" 
                   value={(results.monthlyGross - results.bonusBase) * 12} 
                   total={results.annualGross} 
                   color="bg-blue-300" 
@@ -455,7 +580,7 @@ const App = () => {
                 <h4 className="text-sm font-semibold text-slate-600 mb-2">快速摘要</h4>
                 <ul className="text-sm space-y-2 text-slate-500">
                   <li className="flex justify-between">
-                    <span>月薪總額:</span>
+                    <span>月薪總額 (應領):</span>
                     <span className="font-mono text-slate-800">{formatCurrency(results.monthlyGross)}</span>
                   </li>
                   <li className="flex justify-between text-red-400">
@@ -463,7 +588,7 @@ const App = () => {
                     <span className="font-mono">- {formatCurrency(results.monthlyDeduction)}</span>
                   </li>
                   <li className="flex justify-between border-t border-slate-100 pt-2 font-bold">
-                    <span>每月實領:</span>
+                    <span>每月實領 (Net):</span>
                     <span className="font-mono text-slate-800">{formatCurrency(results.monthlyNet)}</span>
                   </li>
                 </ul>
@@ -478,7 +603,7 @@ const App = () => {
 };
 
 // 小元件：輸入框組合
-const InputGroup = ({ label, value, onChange, highlight = false, placeholder = "輸入金額" }) => (
+const InputGroup = ({ label, value, onChange, highlight = false, placeholder = "輸入金額", readOnly = false, locked = false, onKeyDown }) => (
   <div>
     <label className={`block text-xs font-medium mb-1 ${highlight ? 'text-blue-600' : 'text-slate-500'}`}>
       {label}
@@ -486,11 +611,20 @@ const InputGroup = ({ label, value, onChange, highlight = false, placeholder = "
     <div className="relative">
       <input 
         type="number" 
+        min="0"
         value={value} 
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => !readOnly && onChange(e.target.value)}
+        onKeyDown={onKeyDown}
         placeholder={placeholder}
-        className={`w-full p-2 pl-3 text-right border rounded outline-none transition font-mono placeholder:text-slate-300 ${highlight ? 'border-blue-300 bg-blue-50 focus:ring-2 focus:ring-blue-200' : 'border-slate-200 bg-white focus:border-slate-400'}`}
+        readOnly={readOnly}
+        className={`w-full p-2 pl-3 text-right border rounded outline-none transition font-mono 
+          ${readOnly ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:border-slate-400'}
+          ${highlight ? 'border-blue-300 bg-blue-50 focus:ring-2 focus:ring-blue-200' : 'border-slate-200'}
+          placeholder:text-slate-300`}
       />
+      {locked && (
+        <Lock className="absolute left-3 top-2.5 w-3 h-3 text-slate-400" />
+      )}
     </div>
   </div>
 );
