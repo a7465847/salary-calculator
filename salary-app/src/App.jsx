@@ -53,20 +53,20 @@ const App = () => {
     }
   };
 
+  const val = (v) => (v === '' || isNaN(Number(v))) ? 0 : Number(v);
+
   // --- 狀態管理 ---
   const [incomeItems, setIncomeItems] = useState(() => loadState('salary_income', DEFAULT_INCOME));
   const [selectedLevelCode, setSelectedLevelCode] = useState(() => loadState('salary_level_code', ''));
   const [deductionItems, setDeductionItems] = useState(() => loadState('salary_deduction', DEFAULT_DEDUCTION));
   const [bonuses, setBonuses] = useState(() => loadState('salary_bonuses', DEFAULT_BONUSES));
   const [showDetails, setShowDetails] = useState(false);
-
-  // 計算結果
   const [results, setResults] = useState({
     monthlyGross: 0, monthlyCashGross: 0, monthlyDeduction: 0, monthlyNet: 0,
-    bonusBase: 0, totalBonus: 0, annualGross: 0, annualNet: 0,
+    bonusBase: 0, totalBonus: 0, annualGross: 0, annualCashGross: 0, annualNet: 0,
   });
 
-  // --- 監聽狀態變更並寫入 LocalStorage ---
+  // --- 監聽並寫入 LocalStorage ---
   useEffect(() => { localStorage.setItem('salary_income', JSON.stringify(incomeItems)); }, [incomeItems]);
   useEffect(() => { localStorage.setItem('salary_level_code', JSON.stringify(selectedLevelCode)); }, [selectedLevelCode]);
   useEffect(() => { localStorage.setItem('salary_deduction', JSON.stringify(deductionItems)); }, [deductionItems]);
@@ -86,65 +86,101 @@ const App = () => {
     }
   };
 
-  // --- 自動計算 Effect: 包含全勤、持股、留才 ---
+  // --- 自動計算 Effect 1: 收入相關 (全勤、持股、留才) ---
   useEffect(() => {
-    const base = Number(incomeItems.base) || 0;
-    const level = Number(incomeItems.level) || 0;
+    const base = val(incomeItems.base);
+    const level = val(incomeItems.level);
 
-    // 1. 全勤獎金: (薪額 + 職加) / 30 -> 四捨五入
+    // 1. 全勤獎金
     let newAttendance = incomeItems.attendance;
     if (base === 0 && level === 0) {
-      // 只有當兩者都被清空時，才清空全勤
       if (incomeItems.attendance !== '') newAttendance = '';
     } else {
       const calcAttendance = Math.round((base + level) / 30);
-      if (Number(incomeItems.attendance) !== calcAttendance) {
+      if (val(incomeItems.attendance) !== calcAttendance) {
         newAttendance = calcAttendance;
       }
     }
 
-    // 2. 持股信託與留才增給計算
-    // 公式中間值 (Floor Factor): floor((A+B)*13.6/12/1000)
-    // A=Base, B=Level
-    // 這裡使用 Math.floor 代表無條件捨去
+    // 2. 持股信託與留才增給 (收入)
     const baseTotal = base + level;
-    // 注意：如果 baseTotal 為 0，factor 為 0
     const factor = Math.floor(baseTotal * 13.6 / 12 / 1000);
+    const calcStockBonus = Math.round(factor * 100 * 0.3);
+    const calcRetentionBonus = Math.round(factor * 100 * 0.375);
 
-    // 持股信託獎勵金: round(Factor * 100 * 0.3)
-    const calcStock = Math.round(factor * 100 * 0.3);
-
-    // 留才增給持股: round(Factor * 100 * 0.375)
-    const calcRetention = Math.round(factor * 100 * 0.375);
-
-    // 檢查是否有變動，避免無限迴圈
-    const currentStock = Number(incomeItems.stockBonus) || 0;
-    const currentRetention = Number(incomeItems.retentionBonus) || 0;
+    // 檢查變動
+    const currentStockBonus = val(incomeItems.stockBonus);
+    const currentRetentionBonus = val(incomeItems.retentionBonus);
 
     if (
       newAttendance !== incomeItems.attendance ||
-      calcStock !== currentStock ||
-      calcRetention !== currentRetention
+      calcStockBonus !== currentStockBonus ||
+      calcRetentionBonus !== currentRetentionBonus
     ) {
-      // 只有數值真的改變時才更新 State
       setIncomeItems(prev => ({
         ...prev,
         attendance: newAttendance,
-        stockBonus: calcStock === 0 && baseTotal === 0 ? '' : calcStock, // 如果薪資為0則清空，否則顯示計算值
-        retentionBonus: calcRetention === 0 && baseTotal === 0 ? '' : calcRetention
+        stockBonus: calcStockBonus === 0 && baseTotal === 0 ? '' : calcStockBonus,
+        retentionBonus: calcRetentionBonus === 0 && baseTotal === 0 ? '' : calcRetentionBonus
       }));
     }
-
   }, [incomeItems.base, incomeItems.level, incomeItems.attendance, incomeItems.stockBonus, incomeItems.retentionBonus]);
 
-  // --- 自動計算 Effect: 同步扣款項目 ---
+  // --- 自動計算 Effect 2: 扣款相關 (工會、福利金、持股提存、勞保) ---
   useEffect(() => {
-    setDeductionItems(prev => ({
-      ...prev,
-      stockBonus: incomeItems.stockBonus,
-      retentionBonus: incomeItems.retentionBonus
-    }));
-  }, [incomeItems.stockBonus, incomeItems.retentionBonus]);
+    const base = val(incomeItems.base);
+    const level = val(incomeItems.level);
+    const baseTotal = base + level;
+    
+    // 1. 工會會費: (薪額 + 職加) * 0.005, 四捨五入
+    const calcUnionFee = Math.round(baseTotal * 0.005);
+    let newUnionFee = calcUnionFee === 0 && baseTotal === 0 ? '' : calcUnionFee;
+
+    // 2. 職工福利金: (薪額 + 職加) * 0.005, 四捨五入
+    const calcWelfare = Math.round(baseTotal * 0.005);
+    let newWelfare = calcWelfare === 0 && baseTotal === 0 ? '' : calcWelfare;
+
+    // 3. 持股信託提存金 (公式: 因子 * 100)
+    const factor = Math.floor(baseTotal * 13.6 / 12 / 1000);
+    const calcStockTrust = factor * 100;
+    
+    let newStockTrust = deductionItems.stockTrust;
+    if (calcStockTrust !== val(deductionItems.stockTrust)) {
+       newStockTrust = calcStockTrust === 0 && baseTotal === 0 ? '' : calcStockTrust;
+    }
+
+    // 4. 勞保費 (規則: 薪額+職加 > 45800 則填入 1145)
+    let newLabor = deductionItems.labor;
+    if (baseTotal > 45800) {
+      newLabor = 1145;
+    } 
+
+    // 統一更新 Deduction State
+    if (
+        val(deductionItems.unionFee) !== val(newUnionFee) ||
+        val(deductionItems.welfare) !== val(newWelfare) ||
+        newStockTrust !== deductionItems.stockTrust ||
+        newLabor !== deductionItems.labor ||
+        val(incomeItems.stockBonus) !== val(deductionItems.stockBonus) ||
+        val(incomeItems.retentionBonus) !== val(deductionItems.retentionBonus)
+    ) {
+        setDeductionItems(prev => ({
+            ...prev,
+            unionFee: newUnionFee,
+            welfare: newWelfare,
+            stockTrust: newStockTrust,
+            labor: newLabor,
+            stockBonus: incomeItems.stockBonus,       
+            retentionBonus: incomeItems.retentionBonus 
+        }));
+    }
+
+  }, [
+    incomeItems.base, incomeItems.level, 
+    incomeItems.stockBonus, incomeItems.retentionBonus,
+    deductionItems.stockTrust, deductionItems.labor, deductionItems.stockBonus, deductionItems.retentionBonus,
+    deductionItems.unionFee, deductionItems.welfare
+  ]);
 
   // --- 處理層次職加變更 ---
   const handleLevelSelectChange = (e) => {
@@ -167,8 +203,6 @@ const App = () => {
 
   // --- 主要計算邏輯 ---
   useEffect(() => {
-    const val = (v) => (v === '' || isNaN(Number(v))) ? 0 : Number(v);
-
     const monthlyGross = Object.values(incomeItems).reduce((a, b) => a + val(b), 0);
     const stockItemsValue = val(incomeItems.stockBonus) + val(incomeItems.retentionBonus);
     const monthlyCashGross = monthlyGross - stockItemsValue;
@@ -182,9 +216,10 @@ const App = () => {
     }, 0);
 
     const annualGross = (monthlyGross * 12) + totalBonus;
+    const annualCashGross = (monthlyCashGross * 12) + totalBonus; // 不含股票年薪
     const annualNet = (monthlyNet * 12) + totalBonus; 
 
-    setResults({ monthlyGross, monthlyCashGross, monthlyDeduction, monthlyNet, bonusBase, totalBonus, annualGross, annualNet });
+    setResults({ monthlyGross, monthlyCashGross, monthlyDeduction, monthlyNet, bonusBase, totalBonus, annualGross, annualCashGross, annualNet });
   }, [incomeItems, deductionItems, bonuses]);
 
   // --- 輔助函式 ---
@@ -252,8 +287,8 @@ const App = () => {
                   value={incomeItems.attendance} onChange={(v) => handleIncomeChange('attendance', v)} placeholder="自動計算" onKeyDown={blockInvalidChar} />
               </div>
 
-              <InputGroup label="6. 持股信託獎勵金" value={incomeItems.stockBonus} onChange={(v) => handleIncomeChange('stockBonus', v)} placeholder="自動計算" onKeyDown={blockInvalidChar} />
-              <InputGroup label="7. 留才增給持股" value={incomeItems.retentionBonus} onChange={(v) => handleIncomeChange('retentionBonus', v)} placeholder="自動計算" onKeyDown={blockInvalidChar} />
+              <InputGroup label="6. 持股信託獎勵金" value={incomeItems.stockBonus} onChange={(v) => handleIncomeChange('stockBonus', v)} placeholder="自動計算" onKeyDown={blockInvalidChar} readOnly locked />
+              <InputGroup label="7. 留才增給持股" value={incomeItems.retentionBonus} onChange={(v) => handleIncomeChange('retentionBonus', v)} placeholder="自動計算" onKeyDown={blockInvalidChar} readOnly locked />
             </div>
             <div className="bg-blue-50 px-6 py-2 text-xs text-blue-800 flex items-center gap-2">
               <HelpCircle className="w-4 h-4" /> <span>說明：已將年度全勤獎金(0.4個月)視為包含在每月的「全勤獎金」中。</span>
@@ -267,12 +302,16 @@ const App = () => {
                <span className="text-slate-300 text-sm">小計: -{formatCurrency(results.monthlyDeduction)}</span>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <InputGroup label="1. 工會會費" value={deductionItems.unionFee} onChange={(v) => handleDeductionChange('unionFee', v)} onKeyDown={blockInvalidChar} />
+              <InputGroup label="1. 工會會費" value={deductionItems.unionFee} onChange={(v) => handleDeductionChange('unionFee', v)} onKeyDown={blockInvalidChar} placeholder="自動計算" />
               <InputGroup label="2. 傷亡互助金" value={deductionItems.unionMutual} onChange={(v) => handleDeductionChange('unionMutual', v)} onKeyDown={blockInvalidChar} />
-              <InputGroup label="3. 勞保費" value={deductionItems.labor} onChange={(v) => handleDeductionChange('labor', v)} onKeyDown={blockInvalidChar} />
-              <InputGroup label="4. 職工福利金" value={deductionItems.welfare} onChange={(v) => handleDeductionChange('welfare', v)} onKeyDown={blockInvalidChar} />
-              <InputGroup label="5. 全民健保費" value={deductionItems.health} onChange={(v) => handleDeductionChange('health', v)} onKeyDown={blockInvalidChar} />
-              <InputGroup label="6. 持股信託提存金" value={deductionItems.stockTrust} onChange={(v) => handleDeductionChange('stockTrust', v)} onKeyDown={blockInvalidChar} />
+              
+              <InputGroup label="3. 勞保費" value={deductionItems.labor} onChange={(v) => handleDeductionChange('labor', v)} onKeyDown={blockInvalidChar} placeholder="自動計算" />
+              
+              <InputGroup label="4. 職工福利金" value={deductionItems.welfare} onChange={(v) => handleDeductionChange('welfare', v)} onKeyDown={blockInvalidChar} placeholder="自動計算" />
+              
+              <InputGroup label="5. 全民健保費" value={deductionItems.health} onChange={(v) => handleDeductionChange('health', v)} onKeyDown={blockInvalidChar} placeholder="輸入金額" />
+              
+              <InputGroup label="6. 持股信託提存金" value={deductionItems.stockTrust} onChange={(v) => handleDeductionChange('stockTrust', v)} onKeyDown={blockInvalidChar} placeholder="自動計算" readOnly locked />
               <InputGroup label="7. 持股信託獎勵金" value={deductionItems.stockBonus} onChange={()=>{}} placeholder="自動帶入" readOnly locked />
               <InputGroup label="8. 留才增給持股" value={deductionItems.retentionBonus} onChange={()=>{}} placeholder="自動帶入" readOnly locked />
             </div>
@@ -319,9 +358,12 @@ const App = () => {
         <div className="lg:col-span-5 space-y-6">
           <div className="bg-slate-800 text-white rounded-2xl shadow-xl p-6 md:p-8 flex flex-col items-center justify-center text-center relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-emerald-400 to-blue-500"></div>
-            <h3 className="text-slate-400 text-sm font-medium uppercase tracking-wider mb-2">預估稅前總年薪</h3>
+            <h3 className="text-slate-400 text-sm font-medium uppercase tracking-wider mb-2">預估稅前總年薪 (含股票)</h3>
             <div className="text-4xl md:text-5xl font-bold text-white mb-2 font-mono tracking-tight">{formatCurrency(results.annualGross)}</div>
-            <div className="text-slate-400 text-sm mb-6 flex flex-col items-center gap-1"><span>(月實領約 {formatCurrency(results.monthlyNet)})</span></div>
+            <div className="text-slate-400 text-sm mb-6 flex flex-col items-center gap-1">
+              <span>(不含股票約 {formatCurrency(results.annualCashGross)})</span>
+              <span className="text-xs text-slate-500 mt-1">月實領約 {formatCurrency(results.monthlyNet)}</span>
+            </div>
 
             <div className="w-full grid grid-cols-2 gap-4 border-t border-slate-700 pt-6">
               <div className="text-left"><div className="text-xs text-slate-400 mb-1">固定薪資 (12個月)</div><div className="text-lg font-semibold text-blue-300">{formatCurrency(results.monthlyGross * 12)}</div></div>
