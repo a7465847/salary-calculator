@@ -4,9 +4,9 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  // 注意：如果您是部署到 GitHub Pages，請保留這行並確保名稱與 Repo 一致
-  // 如果您改部署到 AWS S3 且是根目錄，請將 base 改為 '/' 或整行刪除
-  base: '/salary-calculator/', 
+  // 修改說明：當使用 Custom Domain (如 mktsavio.com) 時，網站會位於網域根目錄
+  // 因此 base 必須設為 '/'，不能是 '/salary-calculator/'
+  base: '/', 
   
   plugins: [
     react(),
