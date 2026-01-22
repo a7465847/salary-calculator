@@ -1,5 +1,42 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calculator, DollarSign, PieChart, Plus, Trash2, Wallet, ArrowDownCircle, ArrowUpCircle, HelpCircle, FileText, X, ChevronDown, Lock, RotateCcw, Moon, Sun, Calendar, Coins } from 'lucide-react';
+import { Calculator, DollarSign, PieChart, Plus, Trash2, Wallet, ArrowDownCircle, ArrowUpCircle, HelpCircle, FileText, X, ChevronDown, Lock, RotateCcw, Moon, Sun, Calendar, Coins, ShieldCheck } from 'lucide-react';
+
+// --- 隱私聲明彈窗元件 (新增) ---
+const DisclaimerModal = ({ onClose }) => {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-700 animate-in zoom-in-95 duration-300">
+        <div className="flex flex-col items-center text-center space-y-4">
+          <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+            <ShieldCheck className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+          </div>
+          <h3 className="text-xl font-bold text-slate-800 dark:text-white">
+            隱私安全聲明
+          </h3>
+          <div className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed space-y-2 text-left bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl">
+            <p>
+              👋 您好！感謝使用薪資試算模擬器。為了讓您安心使用，特此說明：
+            </p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li><span className="font-bold text-slate-800 dark:text-slate-200">無後端資料庫</span>：本網站為純靜態網頁，沒有連接任何伺服器資料庫。</li>
+              <li><span className="font-bold text-slate-800 dark:text-slate-200">資料不外流</span>：所有計算皆在您的瀏覽器中執行，您的薪資數據<span className="text-red-500 dark:text-red-400 font-bold">不會</span>上傳至網路。</li>
+              <li><span className="font-bold text-slate-800 dark:text-slate-200">本機暫存</span>：為了方便您下次使用，輸入的數值僅會暫存於您目前的裝置 (Local Storage) 中。</li>
+            </ul>
+            <p className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-600 text-xs text-slate-500 dark:text-slate-400">
+              💡 備註：您可以透過右上角「清除緩存」清除掉您本地的緩存資料。
+            </p>
+          </div>
+          <button 
+            onClick={onClose}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-xl font-bold transition-colors shadow-lg shadow-blue-500/30"
+          >
+            我瞭解了，開始試算
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // --- 共用小元件 ---
 const InputGroup = ({ label, value, onChange, highlight = false, placeholder = "輸入金額", readOnly = false, locked = false, onKeyDown }) => (
@@ -61,19 +98,23 @@ const App = () => {
   const blockInvalidChar = (e) => { if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); };
 
   // --- Global State ---
-  const [activeTab, setActiveTab] = useState('annual'); // 'annual' | 'monthly'
+  const [activeTab, setActiveTab] = useState('annual');
   const [incomeItems, setIncomeItems] = useState(() => loadState('salary_income', DEFAULT_INCOME));
   const [selectedLevelCode, setSelectedLevelCode] = useState(() => loadState('salary_level_code', ''));
   const [deductionItems, setDeductionItems] = useState(() => loadState('salary_deduction', DEFAULT_DEDUCTION));
   const [bonuses, setBonuses] = useState(() => loadState('salary_bonuses', DEFAULT_BONUSES));
   const [showDetails, setShowDetails] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => loadState('salary_dark_mode', false));
+  
+  // 新增：隱私聲明彈窗狀態
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
+
   const [results, setResults] = useState({
     monthlyGross: 0, monthlyCashGross: 0, monthlyDeduction: 0, monthlyNet: 0,
     bonusBase: 0, totalBonus: 0, annualGross: 0, annualCashGross: 0, annualNet: 0,
   });
 
-  // Persistence
+  // Effects
   useEffect(() => { localStorage.setItem('salary_income', JSON.stringify(incomeItems)); }, [incomeItems]);
   useEffect(() => { localStorage.setItem('salary_level_code', JSON.stringify(selectedLevelCode)); }, [selectedLevelCode]);
   useEffect(() => { localStorage.setItem('salary_deduction', JSON.stringify(deductionItems)); }, [deductionItems]);
@@ -83,14 +124,29 @@ const App = () => {
     isDarkMode ? document.documentElement.classList.add('dark') : document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
 
+  // Effect: Check for Disclaimer
+  useEffect(() => {
+    const hasSeenDisclaimer = loadState('salary_disclaimer_seen', false);
+    if (!hasSeenDisclaimer) {
+      setShowDisclaimer(true);
+    }
+  }, []);
+
+  const handleCloseDisclaimer = () => {
+    setShowDisclaimer(false);
+    localStorage.setItem('salary_disclaimer_seen', JSON.stringify(true));
+  };
+
   const handleReset = () => {
-    if (window.confirm('確定要清除所有輸入的資料並重置嗎？')) {
+    if (window.confirm('確定要清除所有輸入的資料並重置嗎？\n(這也會重置隱私聲明彈窗)')) {
       setIncomeItems(DEFAULT_INCOME);
       setDeductionItems(DEFAULT_DEDUCTION);
       setBonuses(DEFAULT_BONUSES);
       setSelectedLevelCode('');
       localStorage.removeItem('salary_income'); localStorage.removeItem('salary_deduction');
       localStorage.removeItem('salary_bonuses'); localStorage.removeItem('salary_level_code');
+      // 讓聲明彈窗下次重新出現
+      localStorage.removeItem('salary_disclaimer_seen');
     }
   };
 
@@ -123,7 +179,7 @@ const App = () => {
   };
 
   // --- Effects & Logic ---
-  // 1. 收入相關 (全勤、持股、留才)
+  // 1. 收入相關
   useEffect(() => {
     const base = val(incomeItems.base);
     const level = val(incomeItems.level);
@@ -206,6 +262,10 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-2 md:p-6 font-sans text-slate-800 dark:text-slate-100 transition-colors duration-300">
+      
+      {/* 隱私聲明彈窗 */}
+      {showDisclaimer && <DisclaimerModal onClose={handleCloseDisclaimer} />}
+
       <div className="max-w-6xl mx-auto flex flex-col gap-6 relative">
         
         {/* Top Bar: Tabs & Actions */}
@@ -245,7 +305,7 @@ const App = () => {
         {activeTab === 'annual' ? (
           <AnnualSalaryView 
             incomeItems={incomeItems} 
-            setIncomeItems={setIncomeItems} // Need specific handlers normally, but direct set is mostly fine for simple inputs not triggering logic immediately in child
+            setIncomeItems={setIncomeItems} 
             deductionItems={deductionItems}
             bonuses={bonuses}
             results={results}
@@ -284,7 +344,7 @@ const App = () => {
 
 // --- Sub-Components ---
 
-// 1. Annual Salary View (The original view)
+// 1. Annual Salary View
 const AnnualSalaryView = ({ 
   incomeItems, deductionItems, bonuses, results, 
   handleIncomeChange, handleLevelSelectChange, handleLevelAmountChange, handleDeductionChange, handleBonusChange, addBonus, removeBonus,
@@ -477,13 +537,12 @@ const AnnualSalaryView = ({
   </div>
 );
 
-// 2. New Monthly Bonus Breakdown View
+// 2. Monthly Bonus View
 const MonthlyBonusView = ({ 
   incomeItems, handleIncomeChange, handleLevelSelectChange, handleLevelAmountChange, 
   selectedLevelCode, LEVEL_OPTIONS, formatCurrency, blockInvalidChar, bonusBase
 }) => {
   
-  // Define the timeline data based on base
   const timeline = [
     { 
       id: 1, 
@@ -504,7 +563,6 @@ const MonthlyBonusView = ({
   return (
     <div className="grid grid-cols-1 gap-6 animate-in fade-in zoom-in-95 duration-300">
       
-      {/* Top Input Section - Reusing logic to sync with main tab */}
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden p-6 transition-colors">
         <div className="flex items-center gap-2 mb-4">
           <Coins className="w-5 h-5 text-yellow-500" />
@@ -537,7 +595,6 @@ const MonthlyBonusView = ({
         </div>
       </div>
 
-      {/* Bonus Structure Summary */}
       <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700 text-sm space-y-2 text-slate-600 dark:text-slate-300">
         <h3 className="font-bold text-slate-800 dark:text-white mb-2">💡 獎金構成說明</h3>
         <ul className="list-disc pl-5 space-y-1">
@@ -548,7 +605,6 @@ const MonthlyBonusView = ({
         </ul>
       </div>
 
-      {/* Timeline Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {timeline.map((slot) => {
           const slotTotalMonths = slot.items.reduce((acc, item) => acc + item.months, 0);
