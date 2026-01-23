@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calculator, DollarSign, PieChart, Plus, Trash2, Wallet, ArrowDownCircle, ArrowUpCircle, HelpCircle, FileText, X, ChevronDown, Lock, RotateCcw, Moon, Sun, Calendar, Coins, ShieldCheck } from 'lucide-react';
+import { Calculator, DollarSign, PieChart, Plus, Trash2, Wallet, ArrowDownCircle, ArrowUpCircle, HelpCircle, FileText, X, ChevronDown, Lock, RotateCcw, Moon, Sun, Calendar, Coins, ShieldCheck, Megaphone, Briefcase } from 'lucide-react';
 
-// --- 隱私聲明彈窗元件 (新增) ---
+// --- 隱私聲明彈窗元件 ---
 const DisclaimerModal = ({ onClose }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
@@ -38,17 +38,77 @@ const DisclaimerModal = ({ onClose }) => {
   );
 };
 
+// --- 公告欄元件 ---
+const BulletinBoard = () => {
+  const [visible, setVisible] = useState(true);
+
+  if (!visible) return null;
+
+  return (
+    <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/50 rounded-xl p-4 mb-2 flex items-start gap-4 relative animate-in slide-in-from-top-2 duration-300 shadow-sm">
+      <div className="p-2 bg-indigo-100 dark:bg-indigo-800 rounded-full text-indigo-600 dark:text-indigo-300 flex-shrink-0">
+        <Megaphone className="w-5 h-5" />
+      </div>
+      <div className="flex-1 pr-6">
+        <h4 className="font-bold text-indigo-800 dark:text-indigo-200 text-sm mb-1">最新公告：支援 PWA 與 RWD</h4>
+        <p className="text-sm text-indigo-700 dark:text-indigo-300 leading-relaxed opacity-90">
+          本工具支援 <strong>PWA (Progressive Web App)</strong> 技術，您可以將網頁<strong>「加入主畫面」</strong>，即可像原生 App 一樣離線使用！
+          <span className="block mt-1 sm:inline sm:mt-0 sm:ml-1">
+            同時具備 <strong>RWD (響應式設計)</strong>，無論是手機、平板或電腦瀏覽都能完美適配。
+          </span>
+        </p>
+      </div>
+      <button 
+        onClick={() => setVisible(false)}
+        className="absolute top-2 right-2 p-1 text-indigo-400 hover:text-indigo-600 dark:text-indigo-500 dark:hover:text-indigo-300 transition-colors rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
+
+// --- 可摺疊卡片元件 ---
+const CollapsibleCard = ({ title, summary, headerColor, children, defaultOpen = false }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors">
+      <div 
+        className={`${headerColor} px-6 py-4 flex justify-between items-center cursor-pointer select-none transition-colors group`}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <div className="flex items-center gap-2 text-white font-bold">
+           {title}
+           <ChevronDown className={`w-5 h-5 text-white/80 transition-transform duration-300 ${isOpen ? 'rotate-180' : 'group-hover:translate-y-0.5'}`} />
+        </div>
+        {/* 阻止事件冒泡 */}
+        <div onClick={(e) => e.stopPropagation()}>
+          {summary}
+        </div>
+      </div>
+      
+      {isOpen && (
+        <div className="animate-in slide-in-from-top-2 duration-300">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- 共用小元件 ---
-const InputGroup = ({ label, value, onChange, highlight = false, placeholder = "輸入金額", readOnly = false, locked = false, onKeyDown }) => (
+const InputGroup = ({ label, value, onChange, highlight = false, placeholder = "輸入金額", readOnly = false, locked = false, onKeyDown, step = 1, suffix }) => (
   <div>
     <label className={`block text-xs font-medium mb-1 ${highlight ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>{label}</label>
     <div className="relative">
-      <input type="number" min="0" value={value} onChange={(e) => !readOnly && onChange(e.target.value)} onKeyDown={onKeyDown} placeholder={placeholder} readOnly={readOnly}
-        className={`w-full p-2 pl-3 text-right border rounded outline-none transition font-mono 
+      <input type="number" min="0" step={step} value={value} onChange={(e) => !readOnly && onChange(e.target.value)} onKeyDown={onKeyDown} placeholder={placeholder} readOnly={readOnly}
+        className={`w-full p-2 pl-3 ${suffix ? 'pr-8' : 'pr-3'} text-right border rounded outline-none transition font-mono 
           ${readOnly ? 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed' : 'bg-white dark:bg-slate-900 focus:border-slate-400'} 
           ${highlight ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800' : 'border-slate-200 dark:border-slate-600'} 
           text-slate-800 dark:text-slate-100 placeholder:text-slate-300 dark:placeholder:text-slate-600`} />
       {locked && <Lock className="absolute left-3 top-2.5 w-3 h-3 text-slate-400" />}
+      {suffix && <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium">{suffix}</span>}
     </div>
   </div>
 );
@@ -79,13 +139,14 @@ const App = () => {
 
   const DEFAULT_INCOME = { base: '', level: '', meal: 3000, transport: 2500, attendance: '', stockBonus: '', retentionBonus: '' };
   const DEFAULT_DEDUCTION = { unionFee: '', unionMutual: '', labor: '', welfare: '', health: '', stockTrust: '', stockBonus: '', retentionBonus: '' };
+  
   const DEFAULT_BONUSES = [
     { id: 1, name: '春節獎金', type: 'month', value: 1.0 },
     { id: 2, name: '端午節獎金', type: 'month', value: 0.3 },
     { id: 3, name: '中秋節獎金', type: 'month', value: 0.3 },
     { id: 5, name: '績效獎金', type: 'month', value: 2.6 },
-    { id: 6, name: '企業化特別獎金', type: 'fixed', value: 200000 },
-    { id: 7, name: '員工酬勞', type: 'fixed', value: 50000 },
+    { id: 6, name: '企業化特別獎金', type: 'fixed', value: 165000 }, 
+    { id: 7, name: '員工酬勞', type: 'fixed', value: 95000 },
   ];
 
   const loadState = (key, defaultValue) => {
@@ -105,8 +166,6 @@ const App = () => {
   const [bonuses, setBonuses] = useState(() => loadState('salary_bonuses', DEFAULT_BONUSES));
   const [showDetails, setShowDetails] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => loadState('salary_dark_mode', false));
-  
-  // 新增：隱私聲明彈窗狀態
   const [showDisclaimer, setShowDisclaimer] = useState(false);
 
   const [results, setResults] = useState({
@@ -124,12 +183,9 @@ const App = () => {
     isDarkMode ? document.documentElement.classList.add('dark') : document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
 
-  // Effect: Check for Disclaimer
   useEffect(() => {
     const hasSeenDisclaimer = loadState('salary_disclaimer_seen', false);
-    if (!hasSeenDisclaimer) {
-      setShowDisclaimer(true);
-    }
+    if (!hasSeenDisclaimer) setShowDisclaimer(true);
   }, []);
 
   const handleCloseDisclaimer = () => {
@@ -145,7 +201,6 @@ const App = () => {
       setSelectedLevelCode('');
       localStorage.removeItem('salary_income'); localStorage.removeItem('salary_deduction');
       localStorage.removeItem('salary_bonuses'); localStorage.removeItem('salary_level_code');
-      // 讓聲明彈窗下次重新出現
       localStorage.removeItem('salary_disclaimer_seen');
     }
   };
@@ -179,7 +234,7 @@ const App = () => {
   };
 
   // --- Effects & Logic ---
-  // 1. 收入相關
+  // 1. 收入相關 (全勤、持股、留才)
   useEffect(() => {
     const base = val(incomeItems.base);
     const level = val(incomeItems.level);
@@ -263,25 +318,21 @@ const App = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-2 md:p-6 font-sans text-slate-800 dark:text-slate-100 transition-colors duration-300">
       
-      {/* 隱私聲明彈窗 */}
       {showDisclaimer && <DisclaimerModal onClose={handleCloseDisclaimer} />}
 
       <div className="max-w-6xl mx-auto flex flex-col gap-6 relative">
         
         {/* Top Bar: Tabs & Actions */}
         <div className="flex flex-col md:flex-row justify-between items-center bg-white dark:bg-slate-800 p-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-          <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
+          <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg overflow-x-auto max-w-full">
+            <button onClick={() => setActiveTab('annual')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'annual' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>年薪計算</button>
+            <button onClick={() => setActiveTab('monthly')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'monthly' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>各月份獎金明細</button>
+            {/* 持股信託預估按鈕 - 禁用狀態 */}
             <button 
-              onClick={() => setActiveTab('annual')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'annual' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+              disabled
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap cursor-not-allowed opacity-50 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500`}
             >
-              年薪計算
-            </button>
-            <button 
-              onClick={() => setActiveTab('monthly')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'monthly' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-            >
-              各月份獎金明細
+              員工持股信託資產試算 (Beta)
             </button>
           </div>
 
@@ -301,8 +352,11 @@ const App = () => {
           </div>
         </div>
 
+        {/* 公告欄 */}
+        <BulletinBoard />
+
         {/* Content Area */}
-        {activeTab === 'annual' ? (
+        {activeTab === 'annual' && (
           <AnnualSalaryView 
             incomeItems={incomeItems} 
             setIncomeItems={setIncomeItems} 
@@ -323,7 +377,9 @@ const App = () => {
             showDetails={showDetails}
             setShowDetails={setShowDetails}
           />
-        ) : (
+        )}
+        
+        {activeTab === 'monthly' && (
           <MonthlyBonusView 
             incomeItems={incomeItems}
             handleIncomeChange={handleIncomeChange}
@@ -353,15 +409,18 @@ const AnnualSalaryView = ({
   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in zoom-in-95 duration-300">
     {/* Left Side */}
     <div className="lg:col-span-7 space-y-6">
-      {/* Income */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors">
-        <div className="bg-blue-600 dark:bg-blue-800 px-6 py-4 flex justify-between items-center">
-          <h2 className="text-white font-bold flex items-center gap-2"><ArrowUpCircle className="w-5 h-5" /> 每月薪津項目 (收入)</h2>
-          <div className="text-right">
-            <div className="text-blue-100 text-sm">應領小計: {formatCurrency(results.monthlyGross)}</div>
-            {results.monthlyGross !== results.monthlyCashGross && (<div className="text-blue-200 text-xs">(現金應領: {formatCurrency(results.monthlyCashGross)})</div>)}
+      {/* Income - Collapsible - Default Closed */}
+      <CollapsibleCard 
+        title={<><ArrowUpCircle className="w-5 h-5" /> 每月薪津項目 (收入)</>}
+        summary={
+          <div className="flex flex-col items-end">
+            <span className="text-blue-100 text-sm">應領小計: {formatCurrency(results.monthlyGross)}</span>
+            {results.monthlyGross !== results.monthlyCashGross && (<span className="text-blue-200 text-xs">(現金應領: {formatCurrency(results.monthlyCashGross)})</span>)}
           </div>
-        </div>
+        }
+        headerColor="bg-blue-600 dark:bg-blue-800"
+        defaultOpen={false}
+      >
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
           <InputGroup label="1. 薪額 (獎金基底)" value={incomeItems.base} onChange={(v) => handleIncomeChange('base', v)} highlight onKeyDown={blockInvalidChar} />
           
@@ -396,14 +455,15 @@ const AnnualSalaryView = ({
         <div className="bg-blue-50 dark:bg-slate-700/50 px-6 py-2 text-xs text-blue-800 dark:text-blue-300 flex items-center gap-2 transition-colors">
           <HelpCircle className="w-4 h-4" /> <span>說明：已將年度全勤獎金(0.4個月)視為包含在每月的「全勤獎金」中。</span>
         </div>
-      </div>
+      </CollapsibleCard>
 
-      {/* Deduction */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors">
-          <div className="bg-slate-700 dark:bg-slate-900 px-6 py-4 flex justify-between items-center transition-colors">
-          <h2 className="text-white font-bold flex items-center gap-2"><ArrowDownCircle className="w-5 h-5 text-red-400" /> 每月扣款／提存</h2>
-            <span className="text-slate-300 text-sm">小計: -{formatCurrency(results.monthlyDeduction)}</span>
-        </div>
+      {/* Deduction - Collapsible - Default Closed */}
+      <CollapsibleCard 
+        title={<><ArrowDownCircle className="w-5 h-5" /> 每月扣款／提存</>}
+        summary={<span className="text-slate-300 text-sm">小計: -{formatCurrency(results.monthlyDeduction)}</span>}
+        headerColor="bg-slate-700 dark:bg-slate-900"
+        defaultOpen={false}
+      >
         <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
           <InputGroup label="1. 工會會費" value={deductionItems.unionFee} onChange={(v) => handleDeductionChange('unionFee', v)} onKeyDown={blockInvalidChar} placeholder="自動計算" />
           <InputGroup label="2. 傷亡互助金" value={deductionItems.unionMutual} onChange={(v) => handleDeductionChange('unionMutual', v)} onKeyDown={blockInvalidChar} />
@@ -418,14 +478,20 @@ const AnnualSalaryView = ({
           <HelpCircle className="w-4 h-4" />
           <span>說明：健保級距是以薪額+層次職加+伙食津貼+交通津貼+全勤獎金做計算。</span>
         </div>
-      </div>
+      </CollapsibleCard>
 
-      {/* Bonus */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors">
-        <div className="bg-emerald-600 dark:bg-emerald-800 px-6 py-4 flex justify-between items-center transition-colors">
-          <h2 className="text-white font-bold flex items-center gap-2"><Wallet className="w-5 h-5" /> 年度獎金與分紅</h2>
-          <button onClick={addBonus} className="text-xs bg-emerald-700 hover:bg-emerald-600 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white px-3 py-1 rounded-full transition flex items-center gap-1"><Plus className="w-3 h-3" /> 新增</button>
-        </div>
+      {/* Bonus - Collapsible - Default Closed */}
+      <CollapsibleCard 
+        title={<><Wallet className="w-5 h-5" /> 年度獎金與分紅</>}
+        summary={
+          <div className="flex items-center gap-3">
+             <span className="text-white/90 text-sm hidden sm:inline">獎金總計: {formatCurrency(results.totalBonus)}</span>
+             <button onClick={(e) => { e.stopPropagation(); addBonus(); }} className="text-xs bg-emerald-700 hover:bg-emerald-600 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white px-3 py-1 rounded-full transition flex items-center gap-1 shadow-sm border border-emerald-500"><Plus className="w-3 h-3" /> 新增</button>
+          </div>
+        }
+        headerColor="bg-emerald-600 dark:bg-emerald-800"
+        defaultOpen={false}
+      >
         <div className="p-4 space-y-2">
           <div className="grid grid-cols-12 gap-2 text-xs text-slate-500 dark:text-slate-400 px-2 mb-1">
             <div className="col-span-4">項目名稱</div><div className="col-span-3">類型</div><div className="col-span-3">數值</div><div className="col-span-2 text-right">預估金額</div>
@@ -453,8 +519,8 @@ const AnnualSalaryView = ({
             </div>
           ))}
         </div>
-        <div className="bg-emerald-50 dark:bg-slate-700/50 px-6 py-2 text-right text-sm font-bold text-emerald-800 dark:text-emerald-400 transition-colors">獎金總計: {formatCurrency(results.totalBonus)}</div>
-      </div>
+        <div className="bg-emerald-50 dark:bg-slate-700/50 px-6 py-2 text-right text-sm font-bold text-emerald-800 dark:text-emerald-400 transition-colors sm:hidden">獎金總計: {formatCurrency(results.totalBonus)}</div>
+      </CollapsibleCard>
     </div>
 
     {/* Right Side */}
