@@ -2,14 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { RotateCcw, Moon, Sun } from 'lucide-react';
 
 // --- 引入拆分後的元件 ---
-// 確保這些檔案存在於您的 src/components/ 資料夾中
 import { DisclaimerModal, BulletinBoard } from './components/CommonComponents';
 import { AnnualSalaryView } from './components/AnnualSalaryView';
 import { MonthlyBonusView } from './components/MonthlyBonusView';
-import TrustSimulator from './components/TrustSimulator'; // 請確保此檔案已建立
+import TrustSimulator from './components/TrustSimulator';
 
 // --- 引入工具函式與常數 ---
-// 修正：補上 formatCurrency 與 blockInvalidChar 的引入
 import { 
   val, 
   formatCurrency, 
@@ -21,11 +19,26 @@ import {
   DEFAULT_BONUSES 
 } from './utils/salaryData';
 
+const APP_VERSION = 'v1.0.2'; 
+
 const App = () => {
-  // --- State Loading Logic ---
+  // --- 讀取狀態邏輯 (已加入版本檢查) ---
   const loadState = (key, defaultValue) => {
-    try { const saved = localStorage.getItem(key); return saved ? JSON.parse(saved) : defaultValue; } 
-    catch (e) { return defaultValue; }
+    try {
+      // 1. 檢查版本號
+      const savedVersion = localStorage.getItem('salary_app_version');
+      
+      // 2. 如果版本不一致 (代表網站更新了)，直接回傳新的預設值，忽略舊緩存
+      if (savedVersion !== APP_VERSION) {
+        return defaultValue;
+      }
+
+      // 3. 版本一致，才讀取舊資料
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : defaultValue;
+    } catch (e) {
+      return defaultValue;
+    }
   };
 
   // --- Global State ---
@@ -44,6 +57,12 @@ const App = () => {
   });
 
   // --- Effects (Persist State) ---
+  
+  // *** 寫入當前版本號 ***
+  useEffect(() => {
+    localStorage.setItem('salary_app_version', APP_VERSION);
+  }, []);
+
   useEffect(() => { localStorage.setItem('salary_income', JSON.stringify(incomeItems)); }, [incomeItems]);
   useEffect(() => { localStorage.setItem('salary_level_code', JSON.stringify(selectedLevelCode)); }, [selectedLevelCode]);
   useEffect(() => { localStorage.setItem('salary_deduction', JSON.stringify(deductionItems)); }, [deductionItems]);
@@ -76,6 +95,8 @@ const App = () => {
       localStorage.removeItem('salary_income'); localStorage.removeItem('salary_deduction');
       localStorage.removeItem('salary_bonuses'); localStorage.removeItem('salary_level_code');
       localStorage.removeItem('salary_disclaimer_seen');
+      // 清除版本號 (雖非必要，但保持乾淨)
+      localStorage.removeItem('salary_app_version'); 
       window.location.reload();
     }
   };
@@ -148,33 +169,72 @@ const App = () => {
     let newLabor = deductionItems.labor;
     if (baseTotal > 45800) newLabor = 1145;
 
+    // 準備計算基數：薪額+職加+伙食+交通+全勤
     const meal = val(incomeItems.meal);
     const transport = val(incomeItems.transport);
     const attendance = val(incomeItems.attendance);
-    const healthBase = base + level + meal + transport + attendance;
+    const wageBase = base + level + meal + transport + attendance;
+
+    // --- 健保計算 (含扶養眷屬) ---
+    const rawDependents = val(deductionItems.dependents);
+    const effectiveDependents = rawDependents > 3 ? 3 : rawDependents; // 最多採計 3 人
+
     let newHealth = ''; 
     const minGrade = HEALTH_INSURANCE_GRADES[0];
     const maxGrade = HEALTH_INSURANCE_GRADES[HEALTH_INSURANCE_GRADES.length - 1];
-    if (healthBase >= minGrade && healthBase <= maxGrade) {
-        const matchedGrade = HEALTH_INSURANCE_GRADES.find(grade => grade >= healthBase);
-        if (matchedGrade) newHealth = Math.round(matchedGrade * 0.0517 * 0.3);
+    
+    if (wageBase >= minGrade && wageBase <= maxGrade) {
+        const matchedGrade = HEALTH_INSURANCE_GRADES.find(grade => grade >= wageBase);
+        if (matchedGrade) {
+          // 健保費公式：投保薪資 × 5.17% × 30% × (1 + 眷屬人數)
+          newHealth = Math.round(matchedGrade * 0.0517 * 0.3 * (1 + effectiveDependents));
+        }
     }
 
-    if (val(deductionItems.unionFee) !== val(newUnionFee) || val(deductionItems.welfare) !== val(newWelfare) ||
-        newStockTrust !== deductionItems.stockTrust || newLabor !== deductionItems.labor || newHealth !== deductionItems.health ||
-        val(incomeItems.stockBonus) !== val(deductionItems.stockBonus) || val(incomeItems.retentionBonus) !== val(deductionItems.retentionBonus)) {
+    // --- 新增：勞退自提計算 ---
+    const pensionRate = val(deductionItems.voluntaryPensionRate); // 取得自提率 (0~6)
+    let newPension = '';
+    if (pensionRate > 0 && wageBase > 0) {
+        // 公式：(薪額+職加+伙+交+勤) * 自提率
+        newPension = Math.round(wageBase * (pensionRate / 100));
+    }
+
+    // 檢查數值變動並更新
+    if (val(deductionItems.unionFee) !== val(newUnionFee) || 
+        val(deductionItems.welfare) !== val(newWelfare) ||
+        newStockTrust !== deductionItems.stockTrust || 
+        newLabor !== deductionItems.labor || 
+        newHealth !== deductionItems.health ||
+        val(newPension) !== val(deductionItems.voluntaryPension) || // 檢查自提金額
+        val(incomeItems.stockBonus) !== val(deductionItems.stockBonus) || 
+        val(incomeItems.retentionBonus) !== val(deductionItems.retentionBonus)) {
+        
         setDeductionItems(prev => ({
-            ...prev, unionFee: newUnionFee, welfare: newWelfare, stockTrust: newStockTrust, labor: newLabor, health: newHealth,
-            stockBonus: incomeItems.stockBonus, retentionBonus: incomeItems.retentionBonus 
+            ...prev, 
+            unionFee: newUnionFee, 
+            welfare: newWelfare, 
+            stockTrust: newStockTrust, 
+            labor: newLabor, 
+            health: newHealth,
+            voluntaryPension: newPension, // 更新自提金額
+            stockBonus: incomeItems.stockBonus, 
+            retentionBonus: incomeItems.retentionBonus 
         }));
     }
-  }, [incomeItems, deductionItems.labor, deductionItems.health, deductionItems.stockTrust, HEALTH_INSURANCE_GRADES]);
+    // Dependency array 加入相關欄位
+  }, [incomeItems, deductionItems.labor, deductionItems.health, deductionItems.stockTrust, deductionItems.dependents, deductionItems.voluntaryPensionRate, deductionItems.voluntaryPension, HEALTH_INSURANCE_GRADES]);
 
   useEffect(() => {
     const monthlyGross = Object.values(incomeItems).reduce((a, b) => a + val(b), 0);
     const stockItemsValue = val(incomeItems.stockBonus) + val(incomeItems.retentionBonus);
     const monthlyCashGross = monthlyGross - stockItemsValue;
-    const monthlyDeduction = Object.values(deductionItems).reduce((a, b) => a + val(b), 0);
+    
+    // 修正：計算扣款總額時，排除 'dependents' 和 'voluntaryPensionRate'
+    const monthlyDeduction = Object.keys(deductionItems).reduce((sum, key) => {
+      if (['dependents', 'voluntaryPensionRate'].includes(key)) return sum;
+      return sum + val(deductionItems[key]);
+    }, 0);
+
     const monthlyNet = monthlyGross - monthlyDeduction;
     const bonusBase = val(incomeItems.base) + val(incomeItems.level);
     const totalBonus = bonuses.reduce((sum, item) => {
@@ -199,7 +259,6 @@ const App = () => {
           <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg overflow-x-auto max-w-full">
             <button onClick={() => setActiveTab('annual')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'annual' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>年薪計算</button>
             <button onClick={() => setActiveTab('monthly')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'monthly' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>各月份獎金明細</button>
-            {/* 啟用按鈕並切換到 'trust' */}
             <button 
               onClick={() => setActiveTab('trust')}
               className={`px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'trust' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}

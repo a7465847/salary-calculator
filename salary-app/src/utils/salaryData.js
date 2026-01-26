@@ -22,7 +22,19 @@ export const HEALTH_INSURANCE_GRADES = [
 ];
 
 export const DEFAULT_INCOME = { base: 50020, level: '', meal: 3000, transport: 2500, attendance: '', stockBonus: '', retentionBonus: '' };
-export const DEFAULT_DEDUCTION = { unionFee: '', unionMutual: '', labor: '', welfare: '', health: '', stockTrust: '', stockBonus: '', retentionBonus: '' };
+export const DEFAULT_DEDUCTION = { 
+  unionFee: '', 
+  unionMutual: '', 
+  labor: '', 
+  welfare: '', 
+  health: '', 
+  stockTrust: '', 
+  stockBonus: '', 
+  retentionBonus: '',
+  dependents: 0,           // 健保扶養眷屬人數 (0~3)
+  voluntaryPension: '',    // 勞退自提金額 (計算結果)
+  voluntaryPensionRate: 0  // 勞退自提率 (0~6)
+};
 
 export const DEFAULT_BONUSES = [
   { id: 1, name: '春節獎金', type: 'month', value: 1.0 },

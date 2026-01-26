@@ -10,9 +10,10 @@ import {
   X, 
   PieChart, 
   HelpCircle,
-  ChevronDown
+  ChevronDown,
+  Users,      // 新增：眷屬圖示
+  PiggyBank   // 新增：勞退自提圖示
 } from 'lucide-react';
-// 請確保 CommonComponents.jsx 位於同一目錄下
 import { CollapsibleCard, InputGroup, BarItem } from './CommonComponents';
 
 export const AnnualSalaryView = ({ 
@@ -23,7 +24,8 @@ export const AnnualSalaryView = ({
   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in zoom-in-95 duration-300">
     {/* Left Side */}
     <div className="lg:col-span-7 space-y-6">
-      {/* Income - Default Open set to true (預設展開) */}
+      
+      {/* Income Section */}
       <CollapsibleCard 
         title={<><ArrowUpCircle className="w-5 h-5" /> 每月薪津項目 (收入)</>}
         summary={
@@ -71,7 +73,7 @@ export const AnnualSalaryView = ({
         </div>
       </CollapsibleCard>
 
-      {/* Deduction */}
+      {/* Deduction Section */}
       <CollapsibleCard 
         title={<><ArrowDownCircle className="w-5 h-5" /> 每月扣款／提存</>}
         summary={<span className="text-slate-300 text-sm">小計: -{formatCurrency(results.monthlyDeduction)}</span>}
@@ -83,18 +85,78 @@ export const AnnualSalaryView = ({
           <InputGroup label="2. 傷亡互助金" value={deductionItems.unionMutual} onChange={(v) => handleDeductionChange('unionMutual', v)} onKeyDown={blockInvalidChar} />
           <InputGroup label="3. 勞保費" value={deductionItems.labor} onChange={(v) => handleDeductionChange('labor', v)} onKeyDown={blockInvalidChar} placeholder="自動計算" />
           <InputGroup label="4. 職工福利金" value={deductionItems.welfare} onChange={(v) => handleDeductionChange('welfare', v)} onKeyDown={blockInvalidChar} placeholder="自動計算" />
-          <InputGroup label="5. 全民健保費" value={deductionItems.health} onChange={(v) => handleDeductionChange('health', v)} onKeyDown={blockInvalidChar} placeholder="自動計算" />
+          
+          {/* 5. 全民健保費 (含扶養眷屬) */}
+          <div className="md:col-span-1">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-xs font-medium text-slate-500 dark:text-slate-400">5. 全民健保費</label>
+              <span className="text-[10px] text-slate-400 flex items-center gap-0.5"><Users className="w-3 h-3"/>扶養眷屬</span>
+            </div>
+            <div className="flex gap-2">
+              <div className="relative w-20 flex-shrink-0">
+                <select 
+                  value={deductionItems.dependents || 0} 
+                  onChange={(e) => handleDeductionChange('dependents', Number(e.target.value))}
+                  className="w-full h-full p-2 pl-2 text-xs bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded outline-none focus:ring-2 focus:ring-slate-200 appearance-none font-medium dark:text-slate-200"
+                >
+                  {[0,1,2,3].map(n => <option key={n} value={n}>{n === 0 ? '無' : `${n}人`}</option>)}
+                </select>
+                <ChevronDown className="absolute right-1 top-3 w-3 h-3 text-slate-400 pointer-events-none" />
+              </div>
+              <div className="relative flex-1">
+                <input type="text" value={deductionItems.health} onChange={()=>{}} placeholder="自動計算" readOnly 
+                  className="w-full p-2 pr-3 text-right border border-slate-200 dark:border-slate-600 rounded outline-none bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-mono" />
+              </div>
+            </div>
+          </div>
+
           <InputGroup label="6. 持股信託提存金" value={deductionItems.stockTrust} onChange={(v) => handleDeductionChange('stockTrust', v)} onKeyDown={blockInvalidChar} placeholder="自動計算" readOnly locked />
           <InputGroup label="7. 持股信託獎勵金" value={deductionItems.stockBonus} onChange={()=>{}} placeholder="自動帶入" readOnly locked />
           <InputGroup label="8. 留才增給持股" value={deductionItems.retentionBonus} onChange={()=>{}} placeholder="自動帶入" readOnly locked />
+
+          {/* 9. 勞退自提 (新增) */}
+          <div className="md:col-span-1">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-xs font-medium text-slate-500 dark:text-slate-400">9. 勞退自提</label>
+              <span className="text-[10px] text-slate-400 flex items-center gap-0.5"><PiggyBank className="w-3 h-3"/>自提率</span>
+            </div>
+            <div className="flex gap-2">
+              <div className="relative w-20 flex-shrink-0">
+                <select 
+                  value={deductionItems.voluntaryPensionRate || 0} 
+                  onChange={(e) => handleDeductionChange('voluntaryPensionRate', Number(e.target.value))}
+                  className="w-full h-full p-2 pl-2 text-xs bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded outline-none focus:ring-2 focus:ring-slate-200 appearance-none font-medium dark:text-slate-200"
+                >
+                  {[0,1,2,3,4,5,6].map(r => <option key={r} value={r}>{r}%</option>)}
+                </select>
+                <ChevronDown className="absolute right-1 top-3 w-3 h-3 text-slate-400 pointer-events-none" />
+              </div>
+              <div className="relative flex-1">
+                <input 
+                  type="text" 
+                  value={deductionItems.voluntaryPension} 
+                  onChange={()=>{}} 
+                  placeholder="未提撥" 
+                  readOnly 
+                  className="w-full p-2 pr-3 text-right border border-slate-200 dark:border-slate-600 rounded outline-none bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-mono" 
+                />
+              </div>
+            </div>
+          </div>
+
         </div>
-        <div className="bg-slate-50 dark:bg-slate-700/50 px-6 py-2 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2 border-t border-slate-100 dark:border-slate-700 transition-colors">
-          <HelpCircle className="w-4 h-4" />
-          <span>說明：健保級距是以薪額+層次職加+伙食津貼+交通津貼+全勤獎金做計算。</span>
+        <div className="bg-slate-50 dark:bg-slate-700/50 px-6 py-2 text-xs text-slate-500 dark:text-slate-400 flex flex-col gap-1 border-t border-slate-100 dark:border-slate-700 transition-colors">
+          <div className="flex items-center gap-2">
+             <HelpCircle className="w-4 h-4" />
+             <span>說明：健保與勞退基數計算基礎為：薪額+職加+伙食+交通+全勤。</span>
+          </div>
+          <div className="pl-6 text-slate-400 dark:text-slate-500">
+             * 健保費包含本人與眷屬，超過3位眷屬者以3位計。
+          </div>
         </div>
       </CollapsibleCard>
 
-      {/* Bonus */}
+      {/* Bonus Section */}
       <CollapsibleCard 
         title={<><Wallet className="w-5 h-5" /> 年度獎金與分紅</>}
         summary={
