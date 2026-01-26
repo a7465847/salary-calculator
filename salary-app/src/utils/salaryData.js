@@ -29,6 +29,6 @@ export const DEFAULT_BONUSES = [
   { id: 2, name: '端午節獎金', type: 'month', value: 0.3 },
   { id: 3, name: '中秋節獎金', type: 'month', value: 0.3 },
   { id: 5, name: '績效獎金', type: 'month', value: 2.6 },
-  { id: 6, name: '企業化特別獎金', type: 'fixed', value: 165000 }, 
+  { id: 6, name: '企業化特別獎金', type: 'fixed', value: 155000 }, 
   { id: 7, name: '員工酬勞', type: 'fixed', value: 95000 },
 ];
